@@ -5,7 +5,7 @@
  */
 (function() {
   const SYNC_CHANNEL = 'northyard_pickleball_channel';
-  const STORAGE_KEY = 'northyard_pickleball_db_v3';
+  const STORAGE_KEY = 'northyard_pickleball_db_v4';
   const bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(SYNC_CHANNEL) : null;
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -101,17 +101,32 @@
       { id: 1, name: 'Pickleball Central PH', contact_person: 'Mark Tan', phone: '+63 917 555 0192', email: 'sales@pickleballcentral.ph', status: 'Active' }
     ],
     users: [
-      { id: 1, name: 'Admin', email: 'admin@pickleball.local', role: 'Administrator', status: 'Active', created_at: todayStr }
+      { id: 1, name: 'Admin', email: 'admin@pickleball.local', role: 'Administrator', status: 'Active', created: '2026-11-01 10:00:00', created_at: '2026-11-01 10:00:00' },
+      { id: 2, name: 'Coach Dave', email: 'dave@pickleball.local', role: 'Staff', status: 'Active', created: '2026-11-02 14:30:00', created_at: '2026-11-02 14:30:00' },
+      { id: 3, name: 'Court Marshal Sarah', email: 'sarah@pickleball.local', role: 'Staff', status: 'Active', created: '2026-11-03 09:15:00', created_at: '2026-11-03 09:15:00' }
     ]
   };
 
   function getDb() {
     try {
       const data = localStorage.getItem(STORAGE_KEY);
-      if (data) return JSON.parse(data);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (!parsed.users || !parsed.users.length || parsed.users.length < 2) {
+          parsed.users = defaultDb.users;
+        }
+        if (!parsed.courtState || !parsed.courtState.length) {
+          parsed.courtState = defaultDb.courtState;
+        }
+        if (!parsed.players || !parsed.players.length) {
+          parsed.players = defaultDb.players;
+        }
+        return parsed;
+      }
     } catch(e) {}
     return defaultDb;
   }
+
 
   function saveDb(db) {
     try {
@@ -750,22 +765,171 @@
       }
 
       // ===================================
-      // 5. /api/users.php, products.php, stock.php, suppliers.php
+      // 5. /api/users.php
       // ===================================
       if (pathname.endsWith('users.php')) {
-        return new Response(JSON.stringify({ ok: true, users: db.users }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        const id = Number(query.id || body.id);
+        if (method === 'POST') {
+          const newId = db.users.length ? Math.max(...db.users.map(u => u.id)) + 1 : 1;
+          const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+          const u = {
+            id: newId,
+            name: body.name || 'New User',
+            email: body.email || '',
+            role: body.role || 'Staff',
+            status: body.status || 'Active',
+            created: nowStr,
+            created_at: nowStr
+          };
+          db.users.push(u);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'PUT') {
+          const item = db.users.find(u => u.id === id);
+          if (item) {
+            if (body.name) item.name = body.name;
+            if (body.email) item.email = body.email;
+            if (body.role) item.role = body.role;
+            if (body.status) item.status = body.status;
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'DELETE') {
+          db.users = db.users.filter(u => u.id !== id);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: true, rows: db.users, users: db.users }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
-      if (pathname.endsWith('products.php')) {
-        return new Response(JSON.stringify({ ok: true, products: db.products }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
-      if (pathname.endsWith('stock.php')) {
-        return new Response(JSON.stringify({ ok: true, stockIn: db.stockIn, stockOut: db.stockOut }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
+
+      // ===================================
+      // 6. /api/suppliers.php
+      // ===================================
       if (pathname.endsWith('suppliers.php')) {
-        return new Response(JSON.stringify({ ok: true, suppliers: db.suppliers }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        const id = Number(query.id || body.id);
+        if (method === 'POST') {
+          const newId = db.suppliers.length ? Math.max(...db.suppliers.map(s => s.id)) + 1 : 1;
+          db.suppliers.push({
+            id: newId,
+            name: body.name || '',
+            contact_person: body.contact || '',
+            phone: body.phone || '',
+            email: body.email || '',
+            address: body.address || '',
+            status: 'Active'
+          });
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'PUT') {
+          const item = db.suppliers.find(s => s.id === id);
+          if (item) {
+            if (body.name) item.name = body.name;
+            if (body.contact) item.contact_person = body.contact;
+            if (body.phone) item.phone = body.phone;
+            if (body.email) item.email = body.email;
+            if (body.address) item.address = body.address;
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'DELETE') {
+          db.suppliers = db.suppliers.filter(s => s.id !== id);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: true, rows: db.suppliers, suppliers: db.suppliers }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      // ===================================
+      // 7. /api/stock.php
+      // ===================================
+      if (pathname.endsWith('stock.php')) {
+        const type = query.type || '';
+        if (method === 'POST') {
+          if (type === 'out') {
+            const newId = db.stockOut.length ? Math.max(...db.stockOut.map(s => s.id)) + 1 : 1;
+            db.stockOut.unshift({
+              id: newId,
+              product_name: body.product || '',
+              qty: Number(body.qty || 1),
+              reason: body.reason || '',
+              issued_to: body.issuedTo || '',
+              entry_date: body.date || todayStr,
+              processed_by: body.by || 'Admin',
+              notes: body.notes || ''
+            });
+            saveDb(db);
+            return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          } else {
+            const newId = db.stockIn.length ? Math.max(...db.stockIn.map(s => s.id)) + 1 : 1;
+            db.stockIn.unshift({
+              id: newId,
+              product_name: body.product || '',
+              supplier_name: body.supplier || '',
+              qty: Number(body.qty || 1),
+              unit_cost: Number(body.cost || 0),
+              entry_date: body.date || todayStr,
+              received_by: body.by || 'Admin',
+              notes: body.notes || ''
+            });
+            saveDb(db);
+            return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          }
+        }
+        if (type === 'out') {
+          return new Response(JSON.stringify({ ok: true, rows: db.stockOut, stockOut: db.stockOut }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: true, rows: db.stockIn, stockIn: db.stockIn }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      // ===================================
+      // 8. /api/products.php
+      // ===================================
+      if (pathname.endsWith('products.php')) {
+        const id = Number(query.id || body.id);
+        if (method === 'POST') {
+          const newId = db.products.length ? Math.max(...db.products.map(p => p.id)) + 1 : 1;
+          db.products.push({
+            id: newId,
+            name: body.name || '',
+            category: body.category || 'Paddle',
+            stock: Number(body.stock || 0),
+            reorder_level: Number(body.reorder || 5),
+            price: Number(body.price || 0),
+            status: 'In Stock'
+          });
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'PUT') {
+          const item = db.products.find(p => p.id === id);
+          if (item) {
+            if (body.name) item.name = body.name;
+            if (body.category) item.category = body.category;
+            if (body.stock !== undefined) item.stock = Number(body.stock);
+            if (body.reorder !== undefined) item.reorder_level = Number(body.reorder);
+            if (body.price !== undefined) item.price = Number(body.price);
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'DELETE') {
+          db.products = db.products.filter(p => p.id !== id);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (id) {
+          const p = db.products.find(x => x.id === id);
+          return new Response(JSON.stringify({ ok: true, product: p }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: true, rows: db.products, products: db.products }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
 
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
     }
 
     return originalFetch.apply(this, arguments);

@@ -1,0 +1,2501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>
+/**
+ * North Yard Pickleball - Client-Side Realtime Storage & API Engine
+ * Enables 100% fluid, zero-latency execution on Vercel, GitHub Pages, or offline.
+ * Intercepts all api/*.php calls and handles state with localStorage & BroadcastChannel.
+ */
+(function() {
+  const SYNC_CHANNEL = 'northyard_pickleball_channel';
+  const STORAGE_KEY = 'northyard_pickleball_db_v4';
+  const bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(SYNC_CHANNEL) : null;
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const nowTimeStr = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+  // Initial Seed Data
+  const defaultDb = {
+    currentUser: { id: 1, email: 'admin@pickleball.local', name: 'Admin', role: 'Administrator' },
+    session: {
+      id: 1,
+      started_at: new Date().toISOString(),
+      start_time: nowTimeStr,
+      status: 'ongoing',
+      total_players: 8,
+      total_courts: 3,
+      notes: 'North Yard Session'
+    },
+    players: [
+      { id: 1, name: 'Prince Miguel', playerType: 'Beginner', registeredAt: '1:00 PM', courtNumber: '2', gamesPlayed: 2, expired: false },
+      { id: 2, name: 'Sarah Jenkins', playerType: 'Beginner', registeredAt: '1:05 PM', courtNumber: '2', gamesPlayed: 1, expired: false },
+      { id: 3, name: 'David Chen', playerType: 'Newbie', registeredAt: '1:10 PM', courtNumber: '1', gamesPlayed: 3, expired: false },
+      { id: 4, name: 'Maria Santos', playerType: 'Newbie', registeredAt: '1:15 PM', courtNumber: '1', gamesPlayed: 2, expired: false },
+      { id: 5, name: 'John Doe', playerType: 'Beginner', registeredAt: '1:20 PM', courtNumber: null, gamesPlayed: 0, expired: false },
+      { id: 6, name: 'Elena Cruz', playerType: 'Beginner', registeredAt: '1:22 PM', courtNumber: null, gamesPlayed: 0, expired: false },
+      { id: 7, name: 'Carlos Ramos', playerType: 'Newbie', registeredAt: '1:25 PM', courtNumber: null, gamesPlayed: 1, expired: false },
+      { id: 8, name: 'Hannah Lee', playerType: 'Beginner', registeredAt: '1:30 PM', courtNumber: null, gamesPlayed: 0, expired: false },
+    ],
+    courtState: [
+      { courtNumber: '1', players: [3, 4] },
+      { courtNumber: '2', players: [1, 2] },
+      { courtNumber: '3', players: [] }
+    ],
+    courtTimers: {
+      '1': { court_number: '1', started_at: new Date(Date.now() - 300000).toISOString(), paused_at: null },
+      '2': { court_number: '2', started_at: new Date(Date.now() - 450000).toISOString(), paused_at: null },
+      '3': { court_number: '3', started_at: null, paused_at: null }
+    },
+    queue: [
+      { id: 101, session_id: 1, queue_number: 1, player_id: 5, playerName: 'John Doe', playerType: 'Beginner', position_in_queue: 1 },
+      { id: 102, session_id: 1, queue_number: 1, player_id: 6, playerName: 'Elena Cruz', playerType: 'Beginner', position_in_queue: 2 },
+      { id: 103, session_id: 1, queue_number: 2, player_id: 7, playerName: 'Carlos Ramos', playerType: 'Newbie', position_in_queue: 1 },
+      { id: 104, session_id: 1, queue_number: 2, player_id: 8, playerName: 'Hannah Lee', playerType: 'Beginner', position_in_queue: 2 }
+    ],
+    syncedTimers: {
+      1: { player_id: 1, remaining: 12500, roundRemaining: 600, running: true, roundRunning: true, updatedAt: Date.now() },
+      2: { player_id: 2, remaining: 11200, roundRemaining: 450, running: true, roundRunning: true, updatedAt: Date.now() },
+      3: { player_id: 3, remaining: 10800, roundRemaining: 300, running: true, roundRunning: true, updatedAt: Date.now() },
+      4: { player_id: 4, remaining: 9400, roundRemaining: 300, running: true, roundRunning: true, updatedAt: Date.now() },
+      5: { player_id: 5, remaining: 14000, roundRemaining: 900, running: true, roundRunning: false, updatedAt: Date.now() },
+      6: { player_id: 6, remaining: 13900, roundRemaining: 900, running: true, roundRunning: false, updatedAt: Date.now() },
+      7: { player_id: 7, remaining: 13500, roundRemaining: 900, running: true, roundRunning: false, updatedAt: Date.now() },
+      8: { player_id: 8, remaining: 14400, roundRemaining: 900, running: true, roundRunning: false, updatedAt: Date.now() }
+    },
+    matchResults: [],
+    logbook: [
+      { id: 1, player_id: 1, session_id: 1, player_name: 'Prince Miguel', player_type: 'Beginner', registered_at: todayStr + ' 13:00:00', expired_at: null, amount: 200, payment_status: 'paid' },
+      { id: 2, player_id: 2, session_id: 1, player_name: 'Sarah Jenkins', player_type: 'Beginner', registered_at: todayStr + ' 13:05:00', expired_at: null, amount: 200, payment_status: 'paid' },
+      { id: 3, player_id: 3, session_id: 1, player_name: 'David Chen', player_type: 'Newbie', registered_at: todayStr + ' 13:10:00', expired_at: null, amount: 200, payment_status: 'unpaid' },
+      { id: 4, player_id: 4, session_id: 1, player_name: 'Maria Santos', player_type: 'Newbie', registered_at: todayStr + ' 13:15:00', expired_at: null, amount: 200, payment_status: 'paid' },
+      { id: 5, player_id: 5, session_id: 1, player_name: 'John Doe', player_type: 'Beginner', registered_at: todayStr + ' 13:20:00', expired_at: null, amount: 200, payment_status: 'unpaid' },
+      { id: 6, player_id: 6, session_id: 1, player_name: 'Elena Cruz', player_type: 'Beginner', registered_at: todayStr + ' 13:22:00', expired_at: null, amount: 200, payment_status: 'paid' },
+      { id: 7, player_id: 7, session_id: 1, player_name: 'Carlos Ramos', player_type: 'Newbie', registered_at: todayStr + ' 13:25:00', expired_at: null, amount: 200, payment_status: 'unpaid' },
+      { id: 8, player_id: 8, session_id: 1, player_name: 'Hannah Lee', player_type: 'Beginner', registered_at: todayStr + ' 13:30:00', expired_at: null, amount: 200, payment_status: 'paid' },
+    ],
+    courtRentals: [
+      {
+        id: 1, customer: 'Michael Reyes', contact_number: '+63 917 123 4567', person_count: 4, hourly_rate: 350, person_rate: 0,
+        court: 'Court 1', rental_date: todayStr, start_time: '14:00', duration: 2, amount: 700, status: 'Booked', created_at: todayStr + ' 10:00:00'
+      },
+      {
+        id: 2, customer: 'Anna Bautista', contact_number: '+63 920 987 6543', person_count: 6, hourly_rate: 400, person_rate: 50,
+        court: 'Court 3', rental_date: todayStr, start_time: '16:00', duration: 1, amount: 700, status: 'Ongoing', created_at: todayStr + ' 11:30:00'
+      }
+    ],
+    paddleRentals: [
+      {
+        id: 1, customer: 'Leo Fernandez', contact_number: '+63 918 555 1234', paddles: 2, balls: 3, paddle_rate: 50, ball_rate: 20,
+        amount: 160, return_time: '18:00', status: 'Rented', returned_at: null, created_at: todayStr + ' 13:00:00'
+      },
+      {
+        id: 2, customer: 'Sophia Ramos', contact_number: '+63 922 444 8888', paddles: 1, balls: 1, paddle_rate: 50, ball_rate: 20,
+        amount: 70, return_time: '15:30', status: 'Returned', returned_at: todayStr + ' 15:25:00', created_at: todayStr + ' 14:00:00'
+      }
+    ],
+    products: [
+      { id: 1, name: 'Franklin X-40 Pickleball Balls (3-pack)', sku: 'BALL-FX40-3', category: 'Balls', price: 450, stock: 24, min_stock: 10, unit: 'pack', status: 'Active' },
+      { id: 2, name: 'Selkirk Vanguard 2.0 Paddle', sku: 'PAD-SLK-VG2', category: 'Paddles', price: 8500, stock: 6, min_stock: 3, unit: 'pcs', status: 'Active' },
+      { id: 3, name: 'North Yard Club Tour Grip', sku: 'ACC-NY-GRP', category: 'Accessories', price: 180, stock: 45, min_stock: 15, unit: 'pcs', status: 'Active' }
+    ],
+    stockIn: [],
+    stockOut: [],
+    suppliers: [
+      { id: 1, name: 'Pickleball Central PH', contact_person: 'Mark Tan', phone: '+63 917 555 0192', email: 'sales@pickleballcentral.ph', status: 'Active' }
+    ],
+    users: [
+      { id: 1, name: 'Admin', email: 'admin@pickleball.local', role: 'Administrator', status: 'Active', created: '2026-11-01 10:00:00', created_at: '2026-11-01 10:00:00' },
+      { id: 2, name: 'Coach Dave', email: 'dave@pickleball.local', role: 'Staff', status: 'Active', created: '2026-11-02 14:30:00', created_at: '2026-11-02 14:30:00' },
+      { id: 3, name: 'Court Marshal Sarah', email: 'sarah@pickleball.local', role: 'Staff', status: 'Active', created: '2026-11-03 09:15:00', created_at: '2026-11-03 09:15:00' }
+    ]
+  };
+
+  function getDb() {
+    try {
+      const data = localStorage.getItem(STORAGE_KEY);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (!parsed.users || !parsed.users.length || parsed.users.length < 2) {
+          parsed.users = defaultDb.users;
+        }
+        if (!parsed.courtState || !parsed.courtState.length) {
+          parsed.courtState = defaultDb.courtState;
+        }
+        if (!parsed.players || !parsed.players.length) {
+          parsed.players = defaultDb.players;
+        }
+        return parsed;
+      }
+    } catch(e) {}
+    return defaultDb;
+  }
+
+
+  function saveDb(db) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+      if (bc) bc.postMessage({ type: 'DB_SYNC', timestamp: Date.now() });
+    } catch(e) {}
+  }
+
+  function getGamesPlayed(db, playerId) {
+    return db.matchResults.filter(m => m.session_id === db.session.id && Number(m.player_id) === Number(playerId)).length;
+  }
+
+  // Cross-tab sync listener
+  if (bc) {
+    bc.onmessage = function(event) {
+      if (event.data?.type === 'DB_SYNC') {
+        if (typeof opRender === 'function') {
+          try {
+            api('open_play.php?action=current').then(r => {
+              if (r.ok && typeof opInit === 'function') {
+                // Background update
+              }
+            });
+          } catch(e) {}
+        }
+      }
+    };
+  }
+
+  // Original fetch
+  const originalFetch = window.fetch;
+
+  // Intercept fetch
+  window.fetch = async function(resource, init = {}) {
+    let urlStr = typeof resource === 'string' ? resource : (resource?.url || '');
+    
+    // Check if this is an API call
+    if (urlStr.includes('api/')) {
+      const parsedUrl = new URL(urlStr, window.location.href);
+      const pathname = parsedUrl.pathname;
+      const query = Object.fromEntries(parsedUrl.searchParams.entries());
+      const method = (init.method || 'GET').toUpperCase();
+      let body = {};
+      try {
+        if (init.body) {
+          body = typeof init.body === 'string' ? JSON.parse(init.body) : init.body;
+        }
+      } catch(e) {}
+
+      const db = getDb();
+
+      // ===================================
+      // 1. /api/auth.php
+      // ===================================
+      if (pathname.endsWith('auth.php')) {
+        const action = query.action || '';
+        if (action === 'me') {
+          return new Response(JSON.stringify({ ok: true, user: db.currentUser }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (action === 'login' || action === 'signup') {
+          db.currentUser = {
+            id: 1,
+            email: body.email || 'admin@pickleball.local',
+            name: (body.email ? body.email.split('@')[0] : 'Admin'),
+            role: 'Administrator'
+          };
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true, user: db.currentUser }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (action === 'logout') {
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      // ===================================
+      // 2. /api/open_play.php
+      // ===================================
+      if (pathname.endsWith('open_play.php')) {
+        const action = query.action || '';
+
+        // DELETE / remove_player
+        if (method === 'DELETE' || action === 'remove_player') {
+          const pid = Number(query.playerId || body.playerId);
+          const isExpired = query.expired === '1' || body.expired === true;
+          if (pid) {
+            const lb = db.logbook.find(x => x.player_id === pid && !x.expired_at);
+            if (lb && (isExpired || lb.expired_at === undefined)) {
+              lb.expired_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
+            }
+            db.queue = db.queue.filter(q => q.player_id !== pid);
+            db.courtState.forEach(c => {
+              c.players = c.players.filter(id => id !== pid);
+            });
+            const p = db.players.find(x => x.id === pid);
+            if (p) p.courtNumber = null;
+
+            if (db.syncedTimers[pid]) {
+              db.syncedTimers[pid].remaining = 0;
+              db.syncedTimers[pid].running = false;
+              db.syncedTimers[pid].roundRunning = false;
+            }
+
+            if (isExpired) {
+              if (p) p.expired = true;
+            } else {
+              db.players = db.players.filter(x => x.id !== pid);
+              delete db.syncedTimers[pid];
+              db.session.total_players = db.players.length;
+            }
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // CURRENT
+        if (action === 'current') {
+          const res = {
+            ok: true,
+            session: db.session,
+            courts: db.courtState.map(c => ({
+              courtNumber: String(c.courtNumber),
+              players: c.players.map(pid => {
+                const p = db.players.find(x => x.id === pid);
+                return p ? { id: p.id, name: p.name, playerType: p.playerType, registeredAt: p.registeredAt, gamesPlayed: getGamesPlayed(db, p.id) } : null;
+              }).filter(Boolean),
+              timer: db.courtTimers[c.courtNumber] || null
+            })),
+            players: db.players.map(p => ({
+              id: p.id,
+              name: p.name,
+              registeredAt: p.registeredAt,
+              courtNumber: p.courtNumber,
+              playerType: p.playerType,
+              expired: p.expired || false,
+              gamesPlayed: getGamesPlayed(db, p.id)
+            })),
+            queue: db.queue.map(q => ({
+              queue_number: q.queue_number,
+              position_in_queue: q.position_in_queue,
+              player_id: q.player_id,
+              playerName: q.playerName,
+              playerType: q.playerType,
+              lastResult: q.lastResult || null,
+              gamesPlayed: getGamesPlayed(db, q.player_id)
+            })),
+            timers: [1, 2, 3].map(c => ({
+              courtNumber: String(c),
+              started_at: db.courtTimers[c]?.started_at || null,
+              paused_at: db.courtTimers[c]?.paused_at || null
+            })),
+            timerState: db.players.map(p => {
+              const st = db.syncedTimers[p.id];
+              if (st) {
+                const elapsed = Math.floor((Date.now() - (st.updatedAt || Date.now())) / 1000);
+                const roundRemaining = st.roundRunning ? Math.max(0, st.roundRemaining - elapsed) : st.roundRemaining;
+                const spent = st.running ? elapsed : 0;
+                const remaining = Math.max(0, st.remaining - spent);
+                return {
+                  player_id: p.id,
+                  remaining,
+                  roundRemaining,
+                  running: st.running && remaining > 0,
+                  roundRunning: st.roundRunning && roundRemaining > 0 && remaining > 0
+                };
+              }
+              return { player_id: p.id, remaining: 14400, roundRemaining: 900, running: true, roundRunning: !!p.courtNumber };
+            })
+          };
+          return new Response(JSON.stringify(res), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // GET_DISPLAY_DATA
+        if (action === 'get_display_data') {
+          const res = {
+            ok: true,
+            session: db.session,
+            courts: db.courtState.map(c => {
+              const cNum = String(c.courtNumber);
+              const cTimer = db.courtTimers[cNum];
+              return {
+                courtNumber: cNum,
+                startedAt: cTimer?.started_at || null,
+                pausedAt: cTimer?.paused_at || null,
+                players: c.players.map(pid => {
+                  const p = db.players.find(x => x.id === pid);
+                  return p ? { id: p.id, name: p.name, playerType: p.playerType, registeredAt: p.registeredAt, courtNumber: p.courtNumber, gamesPlayed: getGamesPlayed(db, p.id) } : null;
+                }).filter(Boolean)
+              };
+            }),
+            timers: db.courtTimers,
+            players: db.players.map(p => ({
+              id: p.id,
+              name: p.name,
+              courtNumber: p.courtNumber,
+              playerType: p.playerType,
+              expired: p.expired || false,
+              gamesPlayed: getGamesPlayed(db, p.id)
+            })),
+            queue: db.queue.map(q => ({
+              ...q,
+              gamesPlayed: getGamesPlayed(db, q.player_id)
+            })),
+            timerState: db.players.map(p => {
+              const st = db.syncedTimers[p.id];
+              if (st) {
+                const elapsed = Math.floor((Date.now() - (st.updatedAt || Date.now())) / 1000);
+                const roundRemaining = st.roundRunning ? Math.max(0, st.roundRemaining - elapsed) : st.roundRemaining;
+                const spent = st.running ? elapsed : 0;
+                const remaining = Math.max(0, st.remaining - spent);
+                return {
+                  player_id: p.id,
+                  remaining,
+                  roundRemaining,
+                  running: st.running && remaining > 0,
+                  roundRunning: st.roundRunning && roundRemaining > 0 && remaining > 0
+                };
+              }
+              return { player_id: p.id, remaining: 14400, roundRemaining: 900, running: true, roundRunning: !!p.courtNumber };
+            })
+          };
+          return new Response(JSON.stringify(res), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // ADD_PLAYER
+        if (action === 'add_player') {
+          const name = (body.name || '').trim();
+          let rawType = (body.playerType || 'Beginner').trim();
+          if (rawType.toLowerCase() === 'novice') rawType = 'Newbie';
+          const playerType = ['Newbie', 'Beginner'].includes(rawType) ? rawType : 'Beginner';
+          const registeredAt = body.registeredAt || new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+          const existingIdx = db.players.findIndex(p => p.name.trim().toLowerCase() === name.toLowerCase());
+          if (existingIdx !== -1) {
+            const existingPlayer = db.players[existingIdx];
+            const timer = db.syncedTimers[existingPlayer.id];
+            const isTimerExpired = existingPlayer.expired || (timer && timer.remaining <= 0);
+            if (!isTimerExpired) {
+              return new Response(JSON.stringify({ ok: false, error: 'Player "' + name + '" is already registered.' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
+            }
+            db.players.splice(existingIdx, 1);
+            delete db.syncedTimers[existingPlayer.id];
+          }
+
+          const newId = (db.players.length ? Math.max(...db.players.map(p => p.id)) : 0) + 1;
+          const newPlayer = { id: newId, name, playerType, registeredAt, courtNumber: null, expired: false };
+          db.players.push(newPlayer);
+          db.session.total_players = db.players.length;
+
+          db.syncedTimers[newId] = {
+            player_id: newId,
+            remaining: 14400,
+            roundRemaining: 900,
+            running: true,
+            roundRunning: false,
+            updatedAt: Date.now()
+          };
+
+          db.logbook.unshift({
+            id: Date.now(),
+            player_id: newId,
+            session_id: db.session.id,
+            player_name: name,
+            player_type: playerType,
+            registered_at: todayStr + ' ' + registeredAt,
+            expired_at: null,
+            amount: Number(body.amount) || 200,
+            payment_status: body.paymentStatus || 'unpaid'
+          });
+
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true, playerId: newId, player: newPlayer }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // UPDATE_PLAYER_TYPE
+        if (action === 'update_player_type') {
+          const pid = Number(body.playerId);
+          let rawType = (body.playerType || 'Beginner').trim();
+          if (rawType.toLowerCase() === 'novice') rawType = 'Newbie';
+          const playerType = ['Newbie', 'Beginner'].includes(rawType) ? rawType : 'Beginner';
+
+          const p = db.players.find(x => x.id === pid);
+          if (p) p.playerType = playerType;
+          const qItem = db.queue.find(x => x.player_id === pid);
+          if (qItem) qItem.playerType = playerType;
+          const lb = db.logbook.find(x => x.player_id === pid);
+          if (lb) lb.player_type = playerType;
+
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true, playerType }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // ASSIGN_COURT
+        if (action === 'assign_court') {
+          const pid = Number(body.playerId);
+          const courtNum = String(body.courtNumber || '1');
+          const c = db.courtState.find(x => x.courtNumber === courtNum);
+          if (c && !c.players.includes(pid)) {
+            c.players.push(pid);
+            const p = db.players.find(x => x.id === pid);
+            if (p) p.courtNumber = courtNum;
+            db.queue = db.queue.filter(x => x.player_id !== pid);
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // UNASSIGN_COURT
+        if (action === 'unassign_court') {
+          const pid = Number(body.playerId);
+          db.courtState.forEach(c => {
+            c.players = c.players.filter(id => id !== pid);
+          });
+          const p = db.players.find(x => x.id === pid);
+          if (p) p.courtNumber = null;
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // ADD_TO_QUEUE
+        if (action === 'add_to_queue') {
+          const pid = Number(body.playerId);
+          const qn = Number(body.queueNumber || 1);
+          const p = db.players.find(x => x.id === pid);
+          if (p) {
+            db.queue = db.queue.filter(x => x.player_id !== pid);
+            const currentInQ = db.queue.filter(x => x.queue_number === qn);
+            if (currentInQ.length < 4) {
+              db.queue.push({
+                id: Date.now(),
+                session_id: db.session.id,
+                queue_number: qn,
+                player_id: pid,
+                playerName: p.name,
+                playerType: p.playerType,
+                position_in_queue: currentInQ.length + 1,
+                lastResult: null
+              });
+              saveDb(db);
+            }
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // SWAP_QUEUES
+        if (action === 'swap_queues') {
+          const q1 = Number(body.queue1);
+          const q2 = Number(body.queue2);
+          if (q1 && q2) {
+            db.queue.forEach(q => {
+              if (q.queue_number === q1) q.queue_number = -999;
+            });
+            db.queue.forEach(q => {
+              if (q.queue_number === q2) q.queue_number = q1;
+            });
+            db.queue.forEach(q => {
+              if (q.queue_number === -999) q.queue_number = q2;
+            });
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // REMOVE_FROM_QUEUE
+        if (action === 'remove_from_queue') {
+          const pid = Number(body.playerId);
+          db.queue = db.queue.filter(x => x.player_id !== pid);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // DELETE_QUEUE
+        if (action === 'delete_queue') {
+          const qn = Number(body.queueNumber);
+          db.queue = db.queue.filter(x => x.queue_number !== qn);
+          db.queue.forEach(q => {
+            if (q.queue_number > qn) q.queue_number -= 1;
+          });
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // SEND_QUEUE_TO_COURT
+        if (action === 'send_queue_to_court') {
+          const qn = Number(body.queueNumber);
+          const courtNum = String(body.courtNumber);
+          const c = db.courtState.find(x => x.courtNumber === courtNum);
+          const qItems = db.queue.filter(x => x.queue_number === qn);
+          if (c) {
+            c.players = qItems.map(q => q.player_id);
+            c.players.forEach(pid => {
+              const p = db.players.find(x => x.id === pid);
+              if (p) p.courtNumber = courtNum;
+            });
+            db.queue = db.queue.filter(x => x.queue_number !== qn);
+            db.queue.forEach(q => {
+              if (q.queue_number > qn) q.queue_number -= 1;
+            });
+            db.courtTimers[courtNum] = { court_number: courtNum, started_at: new Date().toISOString(), paused_at: null };
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // TIMERS (START / PAUSE / RESET)
+        if (action === 'start_timer' || action === 'pause_timer' || action === 'reset_timer') {
+          const courtNum = String(body.courtNumber || '1');
+          if (action === 'start_timer') {
+            db.courtTimers[courtNum] = { court_number: courtNum, started_at: new Date().toISOString(), paused_at: null };
+          } else if (action === 'pause_timer') {
+            db.courtTimers[courtNum] = { court_number: courtNum, started_at: null, paused_at: new Date().toISOString() };
+          } else {
+            db.courtTimers[courtNum] = { court_number: courtNum, started_at: null, paused_at: null };
+          }
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // FINISH_MATCH / RECORD_MATCH_RESULT (AUTOMATIC 2-AND-2 SPLIT)
+        if (action === 'record_match_result' || action === 'finish_match') {
+          const courtNum = String(body.courtNumber);
+          const c = db.courtState.find(x => x.courtNumber === courtNum);
+          if (c && c.players.length) {
+            const cPlayers = [...c.players];
+            c.players = [];
+            c.running = false;
+            cPlayers.forEach(pid => {
+              const p = db.players.find(x => x.id === pid);
+              if (p) p.courtNumber = null;
+              db.queue = db.queue.filter(x => x.player_id !== pid);
+            });
+
+            if (Array.isArray(body.assignments) && body.assignments.length) {
+              body.assignments.forEach((a, idx) => {
+                const pid = Number(a.playerId);
+                const qn = Number(a.queueNumber || 1);
+                const resType = a.result || 'played';
+                const p = db.players.find(x => x.id === pid);
+                if (!p) return;
+                if (cPlayers.includes(pid)) {
+                  db.matchResults.push({ session_id: db.session.id, court_number: courtNum, player_id: pid, result: resType });
+                }
+                const currentQ = db.queue.filter(x => x.queue_number === qn);
+                if (currentQ.length < 4) {
+                  db.queue.push({
+                    id: Date.now() + idx,
+                    session_id: db.session.id,
+                    queue_number: qn,
+                    player_id: pid,
+                    playerName: p.name,
+                    playerType: p.playerType,
+                    position_in_queue: currentQ.length + 1,
+                    lastResult: resType
+                  });
+                }
+              });
+            } else {
+              const winners = (body.winners || []).map(Number);
+              const novices = cPlayers.filter(pid => {
+                const p = db.players.find(x => x.id === pid);
+                return p && p.playerType === 'Newbie';
+              });
+              const beginners = cPlayers.filter(pid => {
+                const p = db.players.find(x => x.id === pid);
+                return !p || p.playerType !== 'Newbie';
+              });
+
+              let nextQ = db.queue.length ? Math.max(...db.queue.map(q => q.queue_number)) + 1 : 1;
+              [novices, beginners].forEach(grp => {
+                if (!grp.length) return;
+                const shuffled = [...grp].sort(() => Math.random() - 0.5);
+                shuffled.forEach((pid, idx) => {
+                  const p = db.players.find(x => x.id === pid);
+                  if (!p) return;
+                  const resType = winners.includes(pid) ? 'win' : 'loss';
+                  db.matchResults.push({ session_id: db.session.id, court_number: courtNum, player_id: pid, result: resType });
+                  const targetQ = nextQ + Math.floor(idx / 2);
+                  const currentQ = db.queue.filter(x => x.queue_number === targetQ);
+                  db.queue.push({
+                    id: Date.now() + idx + Math.random(),
+                    session_id: db.session.id,
+                    queue_number: targetQ,
+                    player_id: pid,
+                    playerName: p.name,
+                    playerType: p.playerType,
+                    position_in_queue: currentQ.length + 1,
+                    lastResult: resType
+                  });
+                });
+                nextQ += Math.ceil(grp.length / 2);
+              });
+            }
+
+            db.courtTimers[courtNum] = { court_number: courtNum, started_at: null, paused_at: null };
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // SYNC_TIMERS
+        if (action === 'sync_timers') {
+          const pList = body.players || [];
+          pList.forEach(p => {
+            db.syncedTimers[p.id] = {
+              player_id: p.id,
+              remaining: Number(p.remaining),
+              roundRemaining: Number(p.roundRemaining),
+              running: !!p.running,
+              roundRunning: !!p.roundRunning,
+              updatedAt: Date.now()
+            };
+          });
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // LOGBOOK
+        if (action === 'logbook') {
+          return new Response(JSON.stringify({ ok: true, entries: db.logbook }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        // PAYMENT
+        if (action === 'payment') {
+          const entry = db.logbook.find(e => e.id === Number(body.id));
+          if (entry) {
+            if (body.amount !== undefined) entry.amount = Number(body.amount);
+            if (body.status !== undefined) entry.payment_status = body.status;
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      // ===================================
+      // 3. /api/court_rentals.php
+      // ===================================
+      if (pathname.endsWith('court_rentals.php')) {
+        if (method === 'GET') {
+          return new Response(JSON.stringify({ ok: true, rows: db.courtRentals }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'POST') {
+          const newId = db.courtRentals.length ? Math.max(...db.courtRentals.map(r => r.id)) + 1 : 1;
+          const dur = Number(body.dur || 1);
+          const rate = Number(body.rate || 0);
+          const persons = Number(body.persons || 1);
+          const personRate = Number(body.personRate || 0);
+          const amount = dur * rate + persons * personRate;
+          const newRental = {
+            id: newId,
+            customer: body.customer || 'Customer',
+            contact_number: body.contact || '',
+            person_count: persons,
+            hourly_rate: rate,
+            person_rate: personRate,
+            court: body.court || 'Court 1',
+            rental_date: body.date || todayStr,
+            start_time: body.start || '14:00',
+            duration: dur,
+            amount,
+            status: 'Booked',
+            created_at: todayStr + ' 10:00:00'
+          };
+          db.courtRentals.unshift(newRental);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'PUT') {
+          const id = Number(query.id || body.id);
+          const r = db.courtRentals.find(x => x.id === id);
+          if (r && body.status) {
+            r.status = body.status;
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'DELETE') {
+          const id = Number(query.id || body.id);
+          db.courtRentals = db.courtRentals.filter(x => x.id !== id);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: true, rows: db.courtRentals }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      // ===================================
+      // 4. /api/paddle_rentals.php
+      // ===================================
+      if (pathname.endsWith('paddle_rentals.php')) {
+        if (method === 'GET') {
+          return new Response(JSON.stringify({ ok: true, rows: db.paddleRentals, stock: { paddles: 20, balls: 50 } }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'POST') {
+          const newId = db.paddleRentals.length ? Math.max(...db.paddleRentals.map(r => r.id)) + 1 : 1;
+          const paddles = Number(body.paddles || 0);
+          const balls = Number(body.balls || 0);
+          const paddleRate = Number(body.paddleRate || 50);
+          const ballRate = Number(body.ballRate || 20);
+          const amount = paddles * paddleRate + balls * ballRate;
+          const newRental = {
+            id: newId,
+            customer: body.customer || 'Customer',
+            contact_number: body.contact || '',
+            paddles,
+            balls,
+            paddle_rate: paddleRate,
+            ball_rate: ballRate,
+            amount,
+            return_time: body.returnTime || '18:00',
+            status: 'Rented',
+            returned_at: null,
+            created_at: todayStr + ' ' + nowTimeStr
+          };
+          db.paddleRentals.unshift(newRental);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'PUT') {
+          const id = Number(query.id || body.id);
+          const r = db.paddleRentals.find(x => x.id === id);
+          if (r) {
+            r.status = 'Returned';
+            r.returned_at = todayStr + ' ' + nowTimeStr;
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'DELETE') {
+          const id = Number(query.id || body.id);
+          db.paddleRentals = db.paddleRentals.filter(x => x.id !== id);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: true, rows: db.paddleRentals }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      // ===================================
+      // 5. /api/users.php
+      // ===================================
+      if (pathname.endsWith('users.php')) {
+        const id = Number(query.id || body.id);
+        if (method === 'POST') {
+          const newId = db.users.length ? Math.max(...db.users.map(u => u.id)) + 1 : 1;
+          const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+          const u = {
+            id: newId,
+            name: body.name || 'New User',
+            email: body.email || '',
+            role: body.role || 'Staff',
+            status: body.status || 'Active',
+            created: nowStr,
+            created_at: nowStr
+          };
+          db.users.push(u);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'PUT') {
+          const item = db.users.find(u => u.id === id);
+          if (item) {
+            if (body.name) item.name = body.name;
+            if (body.email) item.email = body.email;
+            if (body.role) item.role = body.role;
+            if (body.status) item.status = body.status;
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'DELETE') {
+          db.users = db.users.filter(u => u.id !== id);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: true, rows: db.users, users: db.users }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      // ===================================
+      // 6. /api/suppliers.php
+      // ===================================
+      if (pathname.endsWith('suppliers.php')) {
+        const id = Number(query.id || body.id);
+        if (method === 'POST') {
+          const newId = db.suppliers.length ? Math.max(...db.suppliers.map(s => s.id)) + 1 : 1;
+          db.suppliers.push({
+            id: newId,
+            name: body.name || '',
+            contact_person: body.contact || '',
+            phone: body.phone || '',
+            email: body.email || '',
+            address: body.address || '',
+            status: 'Active'
+          });
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'PUT') {
+          const item = db.suppliers.find(s => s.id === id);
+          if (item) {
+            if (body.name) item.name = body.name;
+            if (body.contact) item.contact_person = body.contact;
+            if (body.phone) item.phone = body.phone;
+            if (body.email) item.email = body.email;
+            if (body.address) item.address = body.address;
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'DELETE') {
+          db.suppliers = db.suppliers.filter(s => s.id !== id);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: true, rows: db.suppliers, suppliers: db.suppliers }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      // ===================================
+      // 7. /api/stock.php
+      // ===================================
+      if (pathname.endsWith('stock.php')) {
+        const type = query.type || '';
+        if (method === 'POST') {
+          if (type === 'out') {
+            const newId = db.stockOut.length ? Math.max(...db.stockOut.map(s => s.id)) + 1 : 1;
+            db.stockOut.unshift({
+              id: newId,
+              product_name: body.product || '',
+              qty: Number(body.qty || 1),
+              reason: body.reason || '',
+              issued_to: body.issuedTo || '',
+              entry_date: body.date || todayStr,
+              processed_by: body.by || 'Admin',
+              notes: body.notes || ''
+            });
+            saveDb(db);
+            return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          } else {
+            const newId = db.stockIn.length ? Math.max(...db.stockIn.map(s => s.id)) + 1 : 1;
+            db.stockIn.unshift({
+              id: newId,
+              product_name: body.product || '',
+              supplier_name: body.supplier || '',
+              qty: Number(body.qty || 1),
+              unit_cost: Number(body.cost || 0),
+              entry_date: body.date || todayStr,
+              received_by: body.by || 'Admin',
+              notes: body.notes || ''
+            });
+            saveDb(db);
+            return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          }
+        }
+        if (type === 'out') {
+          return new Response(JSON.stringify({ ok: true, rows: db.stockOut, stockOut: db.stockOut }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: true, rows: db.stockIn, stockIn: db.stockIn }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      // ===================================
+      // 8. /api/products.php
+      // ===================================
+      if (pathname.endsWith('products.php')) {
+        const id = Number(query.id || body.id);
+        if (method === 'POST') {
+          const newId = db.products.length ? Math.max(...db.products.map(p => p.id)) + 1 : 1;
+          db.products.push({
+            id: newId,
+            name: body.name || '',
+            category: body.category || 'Paddle',
+            stock: Number(body.stock || 0),
+            reorder_level: Number(body.reorder || 5),
+            price: Number(body.price || 0),
+            status: 'In Stock'
+          });
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'PUT') {
+          const item = db.products.find(p => p.id === id);
+          if (item) {
+            if (body.name) item.name = body.name;
+            if (body.category) item.category = body.category;
+            if (body.stock !== undefined) item.stock = Number(body.stock);
+            if (body.reorder !== undefined) item.reorder_level = Number(body.reorder);
+            if (body.price !== undefined) item.price = Number(body.price);
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'DELETE') {
+          db.products = db.products.filter(p => p.id !== id);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (id) {
+          const p = db.products.find(x => x.id === id);
+          return new Response(JSON.stringify({ ok: true, product: p }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: true, rows: db.products, products: db.products }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+    }
+
+    return originalFetch.apply(this, arguments);
+  };
+})();
+
+</script>
+
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+<meta name="theme-color" content="#071b15" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>🏓 North Yard Open Play — Live Court & Queue Display</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@700;800&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+:root {
+  --bg: #071b15;
+  --card: rgba(255,255,255,.06);
+  --border: rgba(255,255,255,.12);
+  --accent: #22c55e;
+  --accent-light: #4ade80;
+  --blue: #3b82f6;
+  --blue-light: #60a5fa;
+  --orange: #f59e0b;
+  --orange-light: #fbbf24;
+  --red: #ef4444;
+  --red-light: #f87171;
+  --text: #ffffff;
+  --muted: rgba(255,255,255,.62);
+}
+html, body {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: radial-gradient(circle at 15% 10%, rgba(34,197,94,.14), transparent 45%),
+              radial-gradient(circle at 85% 90%, rgba(59,130,246,.12), transparent 45%),
+              var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+body {
+  padding: 20px 24px 40px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.brand { display: flex; align-items: center; gap: 14px; }
+.brand-logo {
+  width: 50px; height: 50px;
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.08);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.brand-logo img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.brand h1 { font-size: 22px; font-weight: 800; letter-spacing: 1.2px; }
+.brand p { font-size: 10.5px; opacity: 0.65; letter-spacing: 2.5px; margin-top: 2px; font-weight: 600; }
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.live-badge {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; font-weight: 800; color: var(--accent-light);
+  background: rgba(34,197,94,.16);
+  padding: 6px 14px; border-radius: 999px;
+  border: 1px solid rgba(34,197,94,.4);
+  letter-spacing: 0.5px;
+}
+.live-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent-light);
+  box-shadow: 0 0 8px var(--accent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .45; transform: scale(.75); }
+}
+#clock {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px; font-weight: 700;
+  color: rgba(255,255,255,.88);
+  background: rgba(255,255,255,.06);
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+/* ============================================================
+   MOBILE PLAYER SELECTION & NOTIFICATION CARD
+   ============================================================ */
+.player-notifier-card {
+  background: linear-gradient(135deg, rgba(34,197,94,.14), rgba(6,78,59,.18));
+  border: 1.5px solid rgba(34,197,94,.38);
+  border-radius: 18px;
+  padding: 16px 18px;
+  margin-bottom: 22px;
+  box-shadow: 0 10px 25px rgba(0,0,0,.25);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pnc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pnc-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+}
+.pnc-icon {
+  width: 32px; height: 32px; border-radius: 10px;
+  background: rgba(34,197,94,.25);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; color: #4ade80;
+}
+.pnc-desc {
+  font-size: 12.5px;
+  color: rgba(255,255,255,.75);
+  line-height: 1.4;
+}
+
+/* Unselected row / Searchable Player Picker */
+.pnc-select-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  position: relative;
+  width: 100%;
+}
+.pnc-search-container {
+  position: relative;
+  width: 100%;
+}
+.pnc-search-input-wrap {
+  display: flex;
+  align-items: center;
+  position: relative;
+  width: 100%;
+  background: rgba(0,0,0,.45);
+  border: 1.5px solid rgba(255,255,255,.22);
+  border-radius: 14px;
+  padding: 0 14px;
+  height: 48px;
+  box-sizing: border-box;
+  transition: border-color .2s, box-shadow .2s;
+}
+.pnc-search-input-wrap:focus-within {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34,197,94,.25);
+  background: rgba(0,0,0,.65);
+}
+.pnc-search-lens {
+  font-size: 16px;
+  margin-right: 10px;
+  opacity: .85;
+  user-select: none;
+}
+.pnc-search-input {
+  flex: 1;
+  height: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+}
+.pnc-search-input::placeholder {
+  color: rgba(255,255,255,.45);
+  font-weight: 500;
+}
+.pnc-search-clear-btn {
+  background: rgba(255,255,255,.15);
+  border: none;
+  color: #fff;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  margin-left: 8px;
+}
+.pnc-search-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 290px;
+  overflow-y: auto;
+  background: #0b1a15;
+  border: 1.5px solid rgba(34,197,94,.38);
+  border-radius: 14px;
+  box-shadow: 0 14px 36px rgba(0,0,0,.7);
+  z-index: 1000;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(34,197,94,.4) transparent;
+}
+.pnc-search-dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+.pnc-search-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pnc-search-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(34,197,94,.4);
+  border-radius: 999px;
+}
+.pnc-dropdown-empty {
+  padding: 16px;
+  text-align: center;
+  color: rgba(255,255,255,.5);
+  font-size: 13px;
+  font-style: italic;
+}
+.pnc-player-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background .15s ease;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+.pnc-player-item:last-child {
+  border-bottom: none;
+}
+.pnc-player-item:hover,
+.pnc-player-item:active {
+  background: rgba(34,197,94,.18);
+}
+.pnc-player-left {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.pnc-player-name {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #f0fdf4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pnc-player-sub {
+  font-size: 11.5px;
+  color: rgba(255,255,255,.6);
+  margin-top: 1px;
+}
+.pnc-player-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.pnc-player-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #93c5fd;
+  background: rgba(59,130,246,.18);
+  border: 1px solid rgba(59,130,246,.35);
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+.pnc-player-time {
+  font-size: 11px;
+  font-weight: 700;
+  color: #86efac;
+  background: rgba(34,197,94,.18);
+  border: 1px solid rgba(34,197,94,.35);
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+.pnc-player-arrow {
+  font-size: 13px;
+  color: #4ade80;
+  margin-left: 2px;
+}
+
+/* Selected status banner */
+.pnc-active-box {
+  background: rgba(0,0,0,.25);
+  border: 1px solid rgba(34,197,94,.3);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pnc-user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pnc-user-name {
+  font-size: 16px;
+  font-weight: 800;
+  color: #86efac;
+}
+.pnc-loc-pill {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(34,197,94,.2);
+  color: #4ade80;
+  border: 1px solid rgba(34,197,94,.4);
+}
+.pnc-loc-pill.court {
+  background: rgba(59,130,246,.2);
+  color: #93c5fd;
+  border-color: rgba(59,130,246,.45);
+}
+.pnc-loc-pill.warn {
+  background: rgba(245,158,11,.25);
+  color: #fbbf24;
+  border-color: rgba(245,158,11,.5);
+}
+.pnc-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.btn-pnc-action {
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.2);
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+.btn-pnc-action:hover { background: rgba(255,255,255,.16); }
+
+/* Mobile View Tabs */
+.mobile-view-tabs {
+  display: none;
+  background: rgba(0,0,0,.3);
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  gap: 4px;
+  margin-bottom: 18px;
+}
+.m-tab-btn {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+}
+.m-tab-btn.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(34,197,94,.35);
+}
+
+/* Sections */
+.section-title {
+  font-size: 13.5px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 2px;
+  color: var(--muted);
+  margin-bottom: 16px;
+  display: flex; align-items: center; gap: 12px;
+}
+.section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Courts Grid */
+.courts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 30px;
+}
+
+.court-card {
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  transition: all .25s ease;
+  position: relative;
+  overflow: hidden;
+}
+.court-card.newbie {
+  border-color: rgba(245,158,11,.4);
+  background: linear-gradient(180deg, rgba(245,158,11,.09) 0%, rgba(255,255,255,.04) 100%);
+}
+.court-card.beginner {
+  border-color: rgba(59,130,246,.4);
+  background: linear-gradient(180deg, rgba(59,130,246,.09) 0%, rgba(255,255,255,.04) 100%);
+}
+
+.court-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px; gap: 8px;
+}
+.court-header-left {
+  display: flex; align-items: center; gap: 10px;
+}
+.court-icon {
+  width: 38px; height: 38px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; flex-shrink: 0;
+}
+.court-icon.newbie { background: linear-gradient(135deg,#f59e0b,#d97706); box-shadow: 0 4px 12px rgba(245,158,11,.3); }
+.court-icon.beginner { background: linear-gradient(135deg,#3b82f6,#2563eb); box-shadow: 0 4px 12px rgba(59,130,246,.3); }
+
+.court-name { font-size: 18px; font-weight: 800; letter-spacing: 0.5px; }
+.court-sub { font-size: 11px; color: var(--muted); font-weight: 600; }
+
+.court-type-pill {
+  font-size: 10.5px; font-weight: 800;
+  padding: 3px 10px; border-radius: 999px;
+  letter-spacing: 0.5px;
+}
+.court-type-pill.newbie { background: rgba(245,158,11,.2); color: #fbbf24; border: 1px solid rgba(245,158,11,.45); }
+.court-type-pill.beginner { background: rgba(59,130,246,.2); color: #93c5fd; border: 1px solid rgba(59,130,246,.45); }
+
+/* Prominent Live Court Timer */
+.court-timer-card {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 15px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.court-timer-card.running {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+.court-timer-card.warning {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.5);
+  animation: timer-pulse-warn 1.4s infinite;
+}
+.court-timer-card.expired {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.55);
+  animation: timer-pulse-alert 1s infinite;
+}
+
+@keyframes timer-pulse-warn {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+  50% { box-shadow: 0 0 16px 2px rgba(245, 158, 11, 0.35); }
+}
+@keyframes timer-pulse-alert {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  50% { box-shadow: 0 0 20px 4px rgba(239, 68, 68, 0.55); }
+}
+
+.court-timer-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.court-timer-digits {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  letter-spacing: 1px;
+}
+.court-timer-card.running .court-timer-digits {
+  color: #4ade80;
+  text-shadow: 0 0 12px rgba(74, 222, 128, 0.45);
+}
+.court-timer-card.warning .court-timer-digits {
+  color: #fbbf24;
+  text-shadow: 0 0 12px rgba(251, 191, 36, 0.45);
+}
+.court-timer-card.expired .court-timer-digits {
+  color: #f87171;
+  text-shadow: 0 0 14px rgba(248, 113, 113, 0.55);
+}
+
+.court-timer-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.court-status-badge {
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.court-status-badge.live {
+  background: rgba(34,197,94,.22);
+  color: #4ade80;
+  border: 1px solid rgba(34,197,94,.45);
+}
+.court-status-badge.warn {
+  background: rgba(245,158,11,.25);
+  color: #fbbf24;
+  border: 1px solid rgba(245,158,11,.5);
+}
+.court-status-badge.expired {
+  background: rgba(239,68,68,.3);
+  color: #fca5a5;
+  border: 1px solid rgba(239,68,68,.6);
+}
+.court-status-badge.paused {
+  background: rgba(255,255,255,.12);
+  color: rgba(255,255,255,.8);
+  border: 1px solid rgba(255,255,255,.2);
+}
+.court-status-badge.empty {
+  background: rgba(255,255,255,.07);
+  color: var(--muted);
+}
+.court-status-hint {
+  font-size: 10.5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* Progress bar */
+.court-progress-track {
+  width: 100%;
+  height: 5px;
+  background: rgba(255,255,255,.1);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.court-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #22c55e, #4ade80);
+  transition: width .4s linear;
+}
+.court-timer-card.warning .court-progress-fill {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+.court-timer-card.expired .court-progress-fill {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
+/* Court Players */
+.court-players {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 100px;
+  margin-bottom: 10px;
+}
+.player-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,.06);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border: 1px solid rgba(255,255,255,.06);
+  transition: all .2s ease;
+}
+.player-row.is-me {
+  background: rgba(34,197,94,.18) !important;
+  border-color: rgba(34,197,94,.5) !important;
+  box-shadow: 0 0 10px rgba(34,197,94,.25);
+}
+.player-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.you-pill {
+  font-size: 9.5px;
+  font-weight: 800;
+  background: var(--accent);
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.5px;
+}
+.player-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+}
+.player-dot.n { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,.6); }
+.player-dot.b { background: #3b82f6; box-shadow: 0 0 6px rgba(59,130,246,.6); }
+
+.type-badge {
+  font-size: 9.5px; font-weight: 800;
+  padding: 1px 6px; border-radius: 999px;
+  letter-spacing: .5px;
+}
+.type-badge.n { background: rgba(245,158,11,.2); color: #fbbf24; border: 1px solid rgba(245,158,11,.4); }
+.type-badge.b { background: rgba(59,130,246,.2); color: #93c5fd; border: 1px solid rgba(59,130,246,.4); }
+
+.player-session-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-light);
+  background: rgba(34,197,94,.12);
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(34,197,94,.25);
+  font-variant-numeric: tabular-nums;
+  margin-left: 2px;
+}
+.player-session-badge.warn {
+  color: #fbbf24;
+  background: rgba(245,158,11,.15);
+  border-color: rgba(245,158,11,.3);
+}
+.player-session-badge.expired {
+  color: #f87171;
+  background: rgba(239,68,68,.18);
+  border-color: rgba(239,68,68,.35);
+}
+
+.empty-court {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 90px;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-style: italic;
+  border: 2px dashed rgba(255,255,255,.12);
+  border-radius: 12px;
+  background: rgba(0,0,0,.1);
+}
+
+.court-footer {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+.court-footer strong { color: #fff; }
+
+/* Queue Alert Banner */
+.queue-alert-box {
+  background: linear-gradient(135deg, rgba(245,158,11,.18), rgba(217,119,6,.1));
+  border: 1.5px solid rgba(245,158,11,.45);
+  border-radius: 14px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13.5px;
+  color: #fef3c7;
+  animation: pulse-warn 2s infinite;
+}
+.queue-alert-icon { font-size: 20px; }
+.queue-alert-box strong { color: #fbbf24; font-weight: 800; }
+
+/* Queue / Paddle Stacking */
+.queue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.queue-card {
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: 18px;
+  padding: 16px 18px;
+}
+.queue-header {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 12px;
+}
+.queue-num {
+  width: 32px; height: 32px; border-radius: 9px;
+  background: linear-gradient(135deg, #22c55e, #15803d);
+  color: #fff;
+  font-size: 15px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+}
+.queue-title { font-size: 15px; font-weight: 800; }
+.queue-count { font-size: 12px; font-weight: 700; color: var(--muted); margin-left: auto; }
+
+.queue-slots { display: flex; flex-direction: column; gap: 6px; }
+.slot-row {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,.05);
+  border-radius: 9px; padding: 8px 10px;
+  font-size: 13px; font-weight: 600;
+  border: 1px solid rgba(255,255,255,.05);
+  transition: all .2s ease;
+}
+.slot-row.is-me {
+  background: rgba(34,197,94,.18) !important;
+  border-color: rgba(34,197,94,.5) !important;
+  box-shadow: 0 0 10px rgba(34,197,94,.25);
+}
+
+.no-session {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; min-height: 50vh;
+  font-size: 18px; color: var(--muted); gap: 14px;
+}
+.no-session .emoji { font-size: 64px; }
+
+/* Last updated */
+#lastUpdated {
+  text-align: center;
+  font-size: 11px; color: var(--muted);
+  margin-top: 28px;
+}
+
+/* ============================================================
+   RESPONSIVE DESIGN (MOBILE PHONES & TABLETS)
+   ============================================================ */
+@media (max-width: 900px) {
+  .courts-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .mobile-view-tabs {
+    display: flex;
+  }
+  .view-hidden {
+    display: none !important;
+  }
+}
+
+@media (max-width: 600px) {
+  body {
+    padding: 14px 14px 32px;
+  }
+  .header {
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+  }
+  .brand-logo {
+    width: 42px; height: 42px; border-radius: 11px;
+  }
+  .brand h1 { font-size: 18px; }
+  .brand p { font-size: 9px; letter-spacing: 2px; }
+  #clock { font-size: 13px; padding: 4px 10px; }
+  .live-badge { font-size: 11px; padding: 4px 10px; }
+  .player-notifier-card {
+    padding: 14px;
+    border-radius: 16px;
+  }
+  .pnc-select-row {
+    width: 100%;
+  }
+  .court-timer-digits {
+    font-size: 26px;
+  }
+  .queue-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="brand">
+    <div class="brand-logo">
+      <img src="North yard.png" alt="North Yard Logo" onerror="this.onerror=null;this.parentNode.innerHTML='🏓';" />
+    </div>
+    <div>
+      <h1>NORTH YARD</h1>
+      <p>OPEN PLAY · LIVE DISPLAY</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="live-badge"><div class="live-dot"></div> LIVE DISPLAY</div>
+    <div id="clock">—</div>
+  </div>
+</div>
+
+<!-- Player Notification & Identity Picker Card -->
+<div class="player-notifier-card" id="playerNotifierCard">
+  <div class="pnc-header">
+    <div class="pnc-title">
+      <div class="pnc-icon">📱</div>
+      <span>Playing today? Get notified when you're up!</span>
+    </div>
+  </div>
+  <div class="pnc-desc">
+    Select your name below. We will send an audio chime &amp; browser notification to your phone when your court is ready or when you're next up in queue — even if you switch apps!
+  </div>
+
+  <!-- Unselected state: Searchable mobile name selector -->
+  <div id="pncPickerRow" class="pnc-select-row">
+    <div class="pnc-search-container" id="pncSearchContainer">
+      <div class="pnc-search-input-wrap">
+        <span class="pnc-search-lens">🔍</span>
+        <input
+          type="text"
+          id="pncSearchInput"
+          class="pnc-search-input"
+          placeholder="Tap to search your name..."
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="none"
+          spellcheck="false"
+          aria-label="Search your player name"
+        />
+        <button
+          type="button"
+          id="pncSearchClear"
+          class="pnc-search-clear-btn"
+          style="display:none;"
+          onclick="pncClearSearch()"
+          aria-label="Clear search"
+        >×</button>
+      </div>
+      <div id="pncSearchResults" class="pnc-search-dropdown" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- Selected active state -->
+  <div id="pncActiveBox" class="pnc-active-box" style="display:none;">
+    <div class="pnc-user-info">
+      <span style="font-size:22px;flex-shrink:0;">🔔</span>
+      <div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.6);text-transform:uppercase;font-weight:700;">Watching notifications for:</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;">
+          <div class="pnc-user-name" id="pncCurrentName">—</div>
+          <div id="pncCurrentLoc" class="pnc-loc-pill">Waiting</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
+          <span id="pncCurrentGames" style="font-size:12px;font-weight:700;color:#93c5fd;background:rgba(59,130,246,0.18);padding:3px 8px;border-radius:6px;border:1px solid rgba(59,130,246,0.35);">🎮 0 games played</span>
+          <span id="pncCurrentTime" style="font-size:12px;font-weight:700;color:#86efac;background:rgba(34,197,94,0.18);padding:3px 8px;border-radius:6px;border:1px solid rgba(34,197,94,0.35);">⏱️ 4h 00m left</span>
+        </div>
+      </div>
+    </div>
+    <div class="pnc-actions">
+      <button class="btn-pnc-action" onclick="testNotificationAlert()" title="Test chime and notification">🔔 Test Ping</button>
+      <button class="btn-pnc-action" onclick="clearMyPlayerSelection()" title="Change selected name">🔄 Change</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile Quick-Filter Tabs -->
+<div class="mobile-view-tabs" id="mobileTabs">
+  <button class="m-tab-btn active" onclick="switchMobileView('all')">👁️ All</button>
+  <button class="m-tab-btn" onclick="switchMobileView('courts')">🏟️ Courts (3)</button>
+  <button class="m-tab-btn" onclick="switchMobileView('queue')">🎯 Queue</button>
+</div>
+
+<!-- Main Display Content -->
+<div id="displayContent">
+  <div class="no-session"><div class="emoji">🏟️</div><div>Waiting for active Open Play session...</div></div>
+</div>
+
+<div id="lastUpdated">Last updated: —</div>
+
+<script>
+const MATCH_DURATION = 900; // 15 mins
+const SESSION_DURATION = 14400; // 4 hours
+
+let displayData = null;
+let displayReceivedAt = 0;
+let currentMobileView = 'all';
+
+// Stored Player Identity (Supports URL param ?player=ID or localStorage)
+let myPlayerId = null;
+try {
+  const urlParams = new URLSearchParams(window.location.search);
+  const qPlayer = urlParams.get('player');
+  if (qPlayer) {
+    myPlayerId = qPlayer;
+    localStorage.setItem('my_openplay_player_id', qPlayer);
+  } else {
+    myPlayerId = localStorage.getItem('my_openplay_player_id');
+  }
+} catch(e) {}
+let lastNotifiedCourt = null;
+let lastNotifiedQueueRem = null;
+let notifiedSession15m = false;
+
+// Register Service Worker for mobile notification support
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(err => {
+    console.log('SW registration error (normal in non-HTTPS/local):', err);
+  });
+}
+
+// Synthesize pleasant two-tone stadium ding (100% offline, zero external files)
+function playDing() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, now); // D5
+    osc.frequency.setValueAtTime(880.00, now + 0.12); // A5
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(0.35, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.65);
+  } catch(e) {
+    console.error('Audio chime error:', e);
+  }
+}
+
+// Send browser notification + audio chime + vibration
+function sendMobileNotification(title, body) {
+  // 1. Audio chime
+  playDing();
+
+  // 2. Vibration
+  if ('vibrate' in navigator) {
+    try { navigator.vibrate([250, 100, 250]); } catch(e) {}
+  }
+
+  // 3. Native Browser Notification
+  if ('Notification' in window && Notification.permission === 'granted') {
+    const options = {
+      body,
+      icon: 'North yard.png',
+      badge: 'North yard.png',
+      tag: 'northyard-alert-' + Date.now(),
+      vibrate: [250, 100, 250],
+      renotify: true
+    };
+
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then(reg => {
+        reg.showNotification(title, options);
+      }).catch(() => {
+        new Notification(title, options);
+      });
+    } else {
+      new Notification(title, options);
+    }
+  }
+}
+
+// Request Notification Permission on user click
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) {
+    alert('This browser does not support web notifications, but audio alerts will still play!');
+    return false;
+  }
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission !== 'denied') {
+    const permission = await Notification.requestPermission();
+    return permission === 'granted';
+  }
+  alert('Notifications are currently blocked in your browser settings. Please allow notifications for this site to receive alerts.');
+  return false;
+}
+
+function escapeHtml(str) {
+  return String(str || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+let pncDropdownOpen = false;
+let pncSearchQuery = '';
+let pncLastPlayerSignature = '';
+
+function pncGetPlayerSignature(players) {
+  if (!players) return '';
+  return players.map(p => p.id + ':' + p.name + ':' + (p.courtNumber || '')).join('|');
+}
+
+function pncFilterPlayers(query) {
+  if (!displayData || !displayData.players) return [];
+  const q = (query || '').trim().toLowerCase();
+  const sorted = [...displayData.players].sort((a,b) => String(a.name).localeCompare(String(b.name)));
+  if (!q) return sorted;
+  return sorted.filter(p => p.name.toLowerCase().includes(q));
+}
+
+function renderPncDropdown(query) {
+  const listEl = document.getElementById('pncSearchResults');
+  if (!listEl) return;
+  const matches = pncFilterPlayers(query);
+  if (!matches.length) {
+    listEl.innerHTML = `<div class="pnc-dropdown-empty">No players found matching "${escapeHtml(query)}"</div>`;
+    listEl.style.display = 'block';
+    pncDropdownOpen = true;
+    return;
+  }
+
+  listEl.innerHTML = matches.map(p => {
+    let loc = 'Waiting in lobby';
+    if (p.courtNumber) loc = 'Playing Court ' + p.courtNumber;
+    else if (displayData.queue) {
+      const qItem = displayData.queue.find(x => String(x.player_id) === String(p.id));
+      if (qItem) loc = `Queue ${qItem.queue_number} (Pos #${qItem.position_in_queue})`;
+    }
+    const pt = timerFor(displayData, p.id);
+    const games = p.gamesPlayed || 0;
+    return `
+      <div class="pnc-player-item" onclick="selectMyPlayer(${p.id})">
+        <div class="pnc-player-left">
+          ${typeBadge(p.playerType)}
+          <div>
+            <div class="pnc-player-name">${escapeHtml(p.name)}</div>
+            <div class="pnc-player-sub">${escapeHtml(loc)}</div>
+          </div>
+        </div>
+        <div class="pnc-player-right">
+          <span class="pnc-player-badge">🎮 ${games}</span>
+          <span class="pnc-player-time">⏱️ ${formatSessionTime(pt.remaining)}</span>
+          <span class="pnc-player-arrow">👉</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+  listEl.style.display = 'block';
+  pncDropdownOpen = true;
+}
+
+function pncClearSearch() {
+  const input = document.getElementById('pncSearchInput');
+  const clearBtn = document.getElementById('pncSearchClear');
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
+  if (clearBtn) clearBtn.style.display = 'none';
+  pncSearchQuery = '';
+  renderPncDropdown('');
+}
+
+function pncCloseDropdown() {
+  const listEl = document.getElementById('pncSearchResults');
+  if (listEl) listEl.style.display = 'none';
+  pncDropdownOpen = false;
+}
+
+async function selectMyPlayer(pid) {
+  myPlayerId = String(pid);
+  try { localStorage.setItem('my_openplay_player_id', String(pid)); } catch(e) {}
+  pncCloseDropdown();
+  await requestNotificationPermission();
+  updatePlayerNotifierUI();
+  if (displayData) render(displayData);
+
+  const pName = getPlayerNameById(pid);
+  sendMobileNotification('🔔 Notifications Active!', `You're all set, ${pName}! We'll alert you with sound & notifications when you're up next.`);
+}
+
+function clearMyPlayerSelection() {
+  myPlayerId = null;
+  try { localStorage.removeItem('my_openplay_player_id'); } catch(e) {}
+  lastNotifiedCourt = null;
+  lastNotifiedQueueRem = null;
+  notifiedSession15m = false;
+  updatePlayerNotifierUI();
+  if (displayData) render(displayData);
+  pncClearSearch();
+}
+
+function testNotificationAlert() {
+  sendMobileNotification('🏓 North Yard Test Alert', 'Notifications and sound are working great on your device!');
+}
+
+function getPlayerNameById(id) {
+  if (!displayData || !displayData.players) return 'Player';
+  const p = displayData.players.find(x => String(x.id) === String(id));
+  return p ? p.name : 'Player';
+}
+
+function updatePlayerNotifierUI() {
+  const pickerRow = document.getElementById('pncPickerRow');
+  const activeBox = document.getElementById('pncActiveBox');
+  const currentName = document.getElementById('pncCurrentName');
+  const currentLoc = document.getElementById('pncCurrentLoc');
+  const currentGames = document.getElementById('pncCurrentGames');
+  const currentTime = document.getElementById('pncCurrentTime');
+  const input = document.getElementById('pncSearchInput');
+
+  if (myPlayerId) {
+    if (pickerRow) pickerRow.style.display = 'none';
+    if (activeBox) activeBox.style.display = 'flex';
+    if (currentName) currentName.textContent = getPlayerNameById(myPlayerId);
+
+    if (displayData) {
+      const p = (displayData.players || []).find(x => String(x.id) === String(myPlayerId));
+      const pt = timerFor(displayData, myPlayerId);
+      const games = p ? (p.gamesPlayed || 0) : 0;
+
+      if (currentGames) currentGames.textContent = `🎮 ${games} ${games === 1 ? 'game' : 'games'} played`;
+      if (currentTime) currentTime.textContent = `⏱️ ${formatSessionTime(pt.remaining)} left`;
+
+      // Find current location
+      if (currentLoc) {
+        if (p && p.courtNumber) {
+          currentLoc.textContent = '🏟️ Playing on Court ' + p.courtNumber;
+          currentLoc.className = 'pnc-loc-pill court';
+        } else {
+          const qItem = (displayData.queue || []).find(x => String(x.player_id) === String(myPlayerId));
+          if (qItem) {
+            currentLoc.textContent = `🎯 Queue ${qItem.queue_number} (Pos #${qItem.position_in_queue})`;
+            currentLoc.className = qItem.queue_number === 1 ? 'pnc-loc-pill warn' : 'pnc-loc-pill';
+          } else {
+            currentLoc.textContent = 'Waiting in lobby';
+            currentLoc.className = 'pnc-loc-pill';
+          }
+        }
+      }
+    }
+  } else {
+    if (pickerRow) pickerRow.style.display = 'flex';
+    if (activeBox) activeBox.style.display = 'none';
+
+    // Only update dropdown when open and user is NOT typing
+    if (pncDropdownOpen && input && document.activeElement !== input) {
+      const sig = pncGetPlayerSignature(displayData?.players);
+      if (sig !== pncLastPlayerSignature) {
+        pncLastPlayerSignature = sig;
+        renderPncDropdown(pncSearchQuery);
+      }
+    }
+  }
+}
+
+// Bind search input interactions on load
+document.addEventListener('DOMContentLoaded', () => {
+  const searchInput = document.getElementById('pncSearchInput');
+  const clearBtn = document.getElementById('pncSearchClear');
+
+  if (searchInput) {
+    searchInput.addEventListener('focus', () => {
+      renderPncDropdown(searchInput.value);
+    });
+
+    searchInput.addEventListener('input', (e) => {
+      pncSearchQuery = e.target.value;
+      if (clearBtn) clearBtn.style.display = pncSearchQuery ? 'block' : 'none';
+      renderPncDropdown(pncSearchQuery);
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    const container = document.getElementById('pncSearchContainer');
+    if (container && !container.contains(e.target)) {
+      pncCloseDropdown();
+    }
+  });
+});
+
+// Mobile view tabs
+function switchMobileView(view) {
+  currentMobileView = view;
+  document.querySelectorAll('.m-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent.toLowerCase().includes(view === 'all' ? 'all' : (view === 'courts' ? 'courts' : 'queue')));
+  });
+  const courtsSec = document.getElementById('secCourts');
+  const queueSec = document.getElementById('secQueue');
+  if (courtsSec && queueSec) {
+    if (view === 'all') {
+      courtsSec.classList.remove('view-hidden');
+      queueSec.classList.remove('view-hidden');
+    } else if (view === 'courts') {
+      courtsSec.classList.remove('view-hidden');
+      queueSec.classList.add('view-hidden');
+    } else if (view === 'queue') {
+      courtsSec.classList.add('view-hidden');
+      queueSec.classList.remove('view-hidden');
+    }
+  }
+}
+
+// Clock ticker
+function updateClock() {
+  const d = new Date();
+  const t = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+  const el = document.getElementById('clock');
+  if (el) el.textContent = t;
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// Fetch data from API
+async function fetchData() {
+  try {
+    const r = await fetch('api/open_play.php?action=get_display_data');
+    const data = await r.json();
+    displayData = data;
+    displayReceivedAt = Date.now();
+    updatePlayerNotifierUI();
+    render(data);
+    checkPlayerNotifications(data);
+    const lu = document.getElementById('lastUpdated');
+    if (lu) lu.textContent = 'Last refreshed: ' + new Date().toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:true });
+  } catch(e) {
+    console.error('Display fetch error:', e);
+  }
+}
+
+function typeBadge(t) {
+  if (t === 'Newbie' || t === 'Novice') return '<span class="type-badge n" title="Novice">N</span>';
+  return '<span class="type-badge b" title="Beginner">B</span>';
+}
+function typeDot(t) {
+  return '<div class="player-dot ' + (t === 'Newbie' || t === 'Novice' ? 'n' : 'b') + '"></div>';
+}
+
+function formatRoundTime(seconds) {
+  seconds = Math.max(0, Math.floor(seconds));
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+function formatSessionTime(seconds) {
+  seconds = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) {
+    return h + 'h ' + String(m).padStart(2, '0') + 'm';
+  }
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+function timerFor(data, id) {
+  const timer = (data.timerState || []).find(t => String(t.player_id) === String(id));
+  if (!timer) return { remaining: SESSION_DURATION, roundRemaining: MATCH_DURATION, running: true, roundRunning: false };
+  const elapsed = Math.max(0, Math.floor((Date.now() - displayReceivedAt) / 1000));
+  const roundRemaining = timer.roundRunning
+    ? Math.max(0, timer.roundRemaining - elapsed)
+    : timer.roundRemaining;
+  const spent = timer.running ? elapsed : 0;
+  const remaining = Math.max(0, timer.remaining - spent);
+  return {
+    remaining,
+    roundRemaining,
+    running: timer.running && remaining > 0,
+    roundRunning: timer.roundRunning && roundRemaining > 0 && remaining > 0
+  };
+}
+
+// Automatic triggers for the selected mobile player
+function checkPlayerNotifications(data) {
+  if (!myPlayerId || !data) return;
+  const pName = getPlayerNameById(myPlayerId);
+
+  // 1. Check if assigned to court
+  const assignedCourt = (data.courts || []).find(c => (c.players || []).some(p => String(p.id) === String(myPlayerId)));
+  if (assignedCourt) {
+    const cNum = assignedCourt.courtNumber;
+    if (lastNotifiedCourt !== cNum) {
+      lastNotifiedCourt = cNum;
+      sendMobileNotification(`🏟️ Court ${cNum} Ready For You!`, `Hey ${pName}, you are called up to Court ${cNum}! Head over to the court now.`);
+    }
+  } else {
+    lastNotifiedCourt = null;
+  }
+
+  // 2. Check if in Queue 1 and a court is ending soon
+  const myQueueItem = (data.queue || []).find(q => String(q.player_id) === String(myPlayerId));
+  if (myQueueItem && myQueueItem.queue_number === 1) {
+    (data.courts || []).forEach(c => {
+      const pTimers = (c.players || []).map(p => timerFor(data, p.id));
+      const isRunning = pTimers.some(t => t.roundRunning);
+      if (isRunning && c.players.length > 0) {
+        const rem = Math.min(...pTimers.map(t => t.roundRemaining));
+        if (rem <= 120 && rem > 0 && lastNotifiedQueueRem !== c.courtNumber) {
+          lastNotifiedQueueRem = c.courtNumber;
+          sendMobileNotification(`⏰ You're Up Next! (Queue 1)`, `Court ${c.courtNumber} match is ending in ${formatRoundTime(rem)}! Get your paddles ready.`);
+        }
+      }
+    });
+  }
+
+  // 3. Check 4-hour session remaining
+  const pt = timerFor(data, myPlayerId);
+  if (pt.remaining <= 900 && pt.remaining > 0 && !notifiedSession15m) {
+    notifiedSession15m = true;
+    sendMobileNotification('⏱️ 15 Mins Left in Session', `Hey ${pName}, you have 15 minutes left in your 4-hour session today.`);
+  }
+}
+
+function render(data) {
+  const container = document.getElementById('displayContent');
+  if (!container) return;
+
+  if (!data || !data.ok || !data.session) {
+    container.innerHTML = '<div class="no-session"><div class="emoji">🏟️</div><div>No active Open Play session. Waiting for registration...</div></div>';
+    return;
+  }
+
+  // Courts
+  const courts = data.courts || [];
+  let alertMessages = [];
+
+  const courtsHtml = courts.map(c => {
+    const num = parseInt(c.courtNumber);
+    const isNewbie = num === 1;
+    const courtClass = isNewbie ? 'newbie' : 'beginner';
+    const typeLabel = isNewbie ? 'Novices Only' : 'Beginners';
+    const players = c.players || [];
+
+    // Calculate match countdown based on court players
+    const pTimers = players.map(p => timerFor(data, p.id));
+    const isRunning = players.length > 0 && pTimers.some(t => t.roundRunning);
+    const courtRoundRem = players.length > 0
+      ? Math.min(...pTimers.map(t => t.roundRemaining))
+      : MATCH_DURATION;
+    const isExpired = players.length > 0 && courtRoundRem <= 0;
+    const isWarning = isRunning && courtRoundRem <= 120 && courtRoundRem > 0;
+
+    // Timer card class & status badge
+    let timerCardClass = '';
+    let statusBadge = '';
+    let statusHint = '15-Minute Round Timer';
+
+    if (players.length === 0) {
+      statusBadge = '<span class="court-status-badge empty">Court Open</span>';
+      statusHint = 'Waiting for players';
+    } else if (isExpired) {
+      timerCardClass = 'expired';
+      statusBadge = '<span class="court-status-badge expired">🔔 Time Expired</span>';
+      statusHint = 'Match complete · Rotate queue';
+      alertMessages.push(`<strong>Court ${num}</strong> match has ended! Queue next players.`);
+    } else if (isRunning) {
+      if (isWarning) {
+        timerCardClass = 'warning';
+        statusBadge = '<span class="court-status-badge warn">⚠️ Ending Soon</span>';
+        statusHint = `${courtRoundRem}s remaining`;
+        alertMessages.push(`<strong>Court ${num}</strong> timer is running out (${formatRoundTime(courtRoundRem)} left) — Next Queue get ready!`);
+      } else {
+        timerCardClass = 'running';
+        statusBadge = '<span class="court-status-badge live">● Live Match</span>';
+        statusHint = `${Math.ceil(courtRoundRem / 60)} min(s) remaining`;
+      }
+    } else {
+      statusBadge = '<span class="court-status-badge paused">⏸ Ready / Paused</span>';
+      statusHint = 'Timer paused';
+    }
+
+    const progressPct = Math.min(100, Math.max(0, (courtRoundRem / MATCH_DURATION) * 100));
+
+    // Player Rows
+    const playersHtml = players.length
+      ? players.map(p => {
+          const pt = timerFor(data, p.id);
+          const sessClass = pt.remaining <= 0 ? 'expired' : (pt.remaining <= 1800 ? 'warn' : '');
+          const isMe = String(p.id) === String(myPlayerId);
+          return `
+            <div class="player-row ${isMe ? 'is-me' : ''}">
+              ${typeDot(p.playerType)}
+              <span class="player-name">
+                ${p.name}
+                ${isMe ? '<span class="you-pill">YOU</span>' : ''}
+              </span>
+              ${typeBadge(p.playerType)}
+              <span class="player-games-badge" style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:6px;margin-left:auto;margin-right:6px;" title="${p.gamesPlayed || 0} games played">
+                🎮 ${p.gamesPlayed || 0}
+              </span>
+              <span class="player-session-badge ${sessClass}" title="Total 4-hour session time remaining">
+                ⏱️ ${formatSessionTime(pt.remaining)}
+              </span>
+            </div>`;
+        }).join('')
+      : '<div class="empty-court">No players currently on Court ' + num + '</div>';
+
+    return `
+      <div class="court-card ${courtClass}">
+        <div class="court-header">
+          <div class="court-header-left">
+            <div class="court-icon ${courtClass}">🏟️</div>
+            <div>
+              <div class="court-name">Court ${num}</div>
+              <div class="court-sub">${typeLabel}</div>
+            </div>
+          </div>
+          <span class="court-type-pill ${courtClass}">${isNewbie ? '🟠 Novice' : '🔵 Beginner'}</span>
+        </div>
+
+        <div class="court-timer-card ${timerCardClass}">
+          <div class="court-timer-top">
+            <div class="court-timer-digits">${formatRoundTime(courtRoundRem)}</div>
+            <div class="court-timer-meta">
+              ${statusBadge}
+              <div class="court-status-hint">${statusHint}</div>
+            </div>
+          </div>
+          <div class="court-progress-track">
+            <div class="court-progress-fill" style="width: ${progressPct}%;"></div>
+          </div>
+        </div>
+
+        <div class="court-players">${playersHtml}</div>
+
+        <div class="court-footer">
+          <span>Occupancy: <strong>${players.length}/4</strong> players</span>
+          <span>${isRunning ? 'Match in progress' : (isExpired ? 'Rotation due' : 'Ready')}</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Queue (strictly limited to maximum 4 players per queue)
+  const queue = data.queue || [];
+  const queueMap = {};
+  const seenQ = new Set();
+  queue.forEach(item => {
+    const pid = String(item.player_id || item.playerName);
+    if (seenQ.has(pid)) return;
+    const qn = parseInt(item.queue_number);
+    if (!queueMap[qn]) queueMap[qn] = [];
+    if (queueMap[qn].length >= 4) return;
+    seenQ.add(pid);
+    queueMap[qn].push(item);
+  });
+  const queueNums = Object.keys(queueMap).sort((a, b) => parseInt(a) - parseInt(b));
+
+  const queueHtml = queueNums.length
+    ? queueNums.map(qn => {
+        const slots = queueMap[qn];
+        const slotsHtml = slots.map(s => {
+          const pt = timerFor(data, s.player_id);
+          const sessClass = pt.remaining <= 0 ? 'expired' : (pt.remaining <= 1800 ? 'warn' : '');
+          const isMe = String(s.player_id) === String(myPlayerId);
+          return `
+            <div class="slot-row ${isMe ? 'is-me' : ''}">
+              ${typeDot(s.playerType)}
+              <span class="player-name">
+                ${s.playerName}
+                ${isMe ? '<span class="you-pill">YOU</span>' : ''}
+              </span>
+              ${typeBadge(s.playerType)}
+              <span class="player-games-badge" style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:6px;margin-left:auto;margin-right:6px;" title="${s.gamesPlayed || 0} games played">
+                🎮 ${s.gamesPlayed || 0}
+              </span>
+              <span class="player-session-badge ${sessClass}" title="Total 4-hour session time remaining">
+                ⏱️ ${formatSessionTime(pt.remaining)}
+              </span>
+            </div>`;
+        }).join('');
+
+        return `
+          <div class="queue-card">
+            <div class="queue-header">
+              <div class="queue-num">${qn}</div>
+              <div class="queue-title">Queue ${qn}</div>
+              <span class="queue-count">${slots.length}/4</span>
+            </div>
+            <div class="queue-slots">${slotsHtml}</div>
+          </div>`;
+      }).join('')
+    : '<div style="color:rgba(255,255,255,.45);font-style:italic;padding:16px 0;">No players in queue.</div>';
+
+  let alertBanner = '';
+  if (alertMessages.length > 0) {
+    alertBanner = `
+      <div class="queue-alert-box">
+        <div class="queue-alert-icon">📢</div>
+        <div>${alertMessages[0]}</div>
+      </div>`;
+  }
+
+  container.innerHTML = `
+    <div id="secCourts" class="${currentMobileView === 'queue' ? 'view-hidden' : ''}">
+      <div class="section-title">🏟️ Courts — Live Status & Match Timers</div>
+      <div class="courts-grid">${courtsHtml}</div>
+    </div>
+
+    <div id="secQueue" class="${currentMobileView === 'courts' ? 'view-hidden' : ''}">
+      <div class="section-title">🎯 Paddle Stacking — Queue (Next Up)</div>
+      ${alertBanner}
+      <div class="queue-grid">${queueHtml}</div>
+    </div>
+  `;
+}
+
+// Initial fetch + 4-second poll, 1-second render loop
+fetchData();
+setInterval(fetchData, 4000);
+setInterval(() => {
+  if (displayData) {
+    render(displayData);
+    updatePlayerNotifierUI();
+  }
+}, 1000);
+</script>
+</body>
+</html>

@@ -9,7 +9,7 @@
  */
 (function() {
   const SYNC_CHANNEL = 'northyard_pickleball_channel';
-  const STORAGE_KEY = 'northyard_pickleball_db_v3';
+  const STORAGE_KEY = 'northyard_pickleball_db_v4';
   const bc = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(SYNC_CHANNEL) : null;
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -105,17 +105,32 @@
       { id: 1, name: 'Pickleball Central PH', contact_person: 'Mark Tan', phone: '+63 917 555 0192', email: 'sales@pickleballcentral.ph', status: 'Active' }
     ],
     users: [
-      { id: 1, name: 'Admin', email: 'admin@pickleball.local', role: 'Administrator', status: 'Active', created_at: todayStr }
+      { id: 1, name: 'Admin', email: 'admin@pickleball.local', role: 'Administrator', status: 'Active', created: '2026-11-01 10:00:00', created_at: '2026-11-01 10:00:00' },
+      { id: 2, name: 'Coach Dave', email: 'dave@pickleball.local', role: 'Staff', status: 'Active', created: '2026-11-02 14:30:00', created_at: '2026-11-02 14:30:00' },
+      { id: 3, name: 'Court Marshal Sarah', email: 'sarah@pickleball.local', role: 'Staff', status: 'Active', created: '2026-11-03 09:15:00', created_at: '2026-11-03 09:15:00' }
     ]
   };
 
   function getDb() {
     try {
       const data = localStorage.getItem(STORAGE_KEY);
-      if (data) return JSON.parse(data);
+      if (data) {
+        const parsed = JSON.parse(data);
+        if (!parsed.users || !parsed.users.length || parsed.users.length < 2) {
+          parsed.users = defaultDb.users;
+        }
+        if (!parsed.courtState || !parsed.courtState.length) {
+          parsed.courtState = defaultDb.courtState;
+        }
+        if (!parsed.players || !parsed.players.length) {
+          parsed.players = defaultDb.players;
+        }
+        return parsed;
+      }
     } catch(e) {}
     return defaultDb;
   }
+
 
   function saveDb(db) {
     try {
@@ -754,22 +769,171 @@
       }
 
       // ===================================
-      // 5. /api/users.php, products.php, stock.php, suppliers.php
+      // 5. /api/users.php
       // ===================================
       if (pathname.endsWith('users.php')) {
-        return new Response(JSON.stringify({ ok: true, users: db.users }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        const id = Number(query.id || body.id);
+        if (method === 'POST') {
+          const newId = db.users.length ? Math.max(...db.users.map(u => u.id)) + 1 : 1;
+          const nowStr = new Date().toISOString().replace('T', ' ').substring(0, 19);
+          const u = {
+            id: newId,
+            name: body.name || 'New User',
+            email: body.email || '',
+            role: body.role || 'Staff',
+            status: body.status || 'Active',
+            created: nowStr,
+            created_at: nowStr
+          };
+          db.users.push(u);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'PUT') {
+          const item = db.users.find(u => u.id === id);
+          if (item) {
+            if (body.name) item.name = body.name;
+            if (body.email) item.email = body.email;
+            if (body.role) item.role = body.role;
+            if (body.status) item.status = body.status;
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'DELETE') {
+          db.users = db.users.filter(u => u.id !== id);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: true, rows: db.users, users: db.users }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
-      if (pathname.endsWith('products.php')) {
-        return new Response(JSON.stringify({ ok: true, products: db.products }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
-      if (pathname.endsWith('stock.php')) {
-        return new Response(JSON.stringify({ ok: true, stockIn: db.stockIn, stockOut: db.stockOut }), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
+
+      // ===================================
+      // 6. /api/suppliers.php
+      // ===================================
       if (pathname.endsWith('suppliers.php')) {
-        return new Response(JSON.stringify({ ok: true, suppliers: db.suppliers }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        const id = Number(query.id || body.id);
+        if (method === 'POST') {
+          const newId = db.suppliers.length ? Math.max(...db.suppliers.map(s => s.id)) + 1 : 1;
+          db.suppliers.push({
+            id: newId,
+            name: body.name || '',
+            contact_person: body.contact || '',
+            phone: body.phone || '',
+            email: body.email || '',
+            address: body.address || '',
+            status: 'Active'
+          });
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'PUT') {
+          const item = db.suppliers.find(s => s.id === id);
+          if (item) {
+            if (body.name) item.name = body.name;
+            if (body.contact) item.contact_person = body.contact;
+            if (body.phone) item.phone = body.phone;
+            if (body.email) item.email = body.email;
+            if (body.address) item.address = body.address;
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'DELETE') {
+          db.suppliers = db.suppliers.filter(s => s.id !== id);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: true, rows: db.suppliers, suppliers: db.suppliers }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      // ===================================
+      // 7. /api/stock.php
+      // ===================================
+      if (pathname.endsWith('stock.php')) {
+        const type = query.type || '';
+        if (method === 'POST') {
+          if (type === 'out') {
+            const newId = db.stockOut.length ? Math.max(...db.stockOut.map(s => s.id)) + 1 : 1;
+            db.stockOut.unshift({
+              id: newId,
+              product_name: body.product || '',
+              qty: Number(body.qty || 1),
+              reason: body.reason || '',
+              issued_to: body.issuedTo || '',
+              entry_date: body.date || todayStr,
+              processed_by: body.by || 'Admin',
+              notes: body.notes || ''
+            });
+            saveDb(db);
+            return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          } else {
+            const newId = db.stockIn.length ? Math.max(...db.stockIn.map(s => s.id)) + 1 : 1;
+            db.stockIn.unshift({
+              id: newId,
+              product_name: body.product || '',
+              supplier_name: body.supplier || '',
+              qty: Number(body.qty || 1),
+              unit_cost: Number(body.cost || 0),
+              entry_date: body.date || todayStr,
+              received_by: body.by || 'Admin',
+              notes: body.notes || ''
+            });
+            saveDb(db);
+            return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          }
+        }
+        if (type === 'out') {
+          return new Response(JSON.stringify({ ok: true, rows: db.stockOut, stockOut: db.stockOut }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: true, rows: db.stockIn, stockIn: db.stockIn }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+
+      // ===================================
+      // 8. /api/products.php
+      // ===================================
+      if (pathname.endsWith('products.php')) {
+        const id = Number(query.id || body.id);
+        if (method === 'POST') {
+          const newId = db.products.length ? Math.max(...db.products.map(p => p.id)) + 1 : 1;
+          db.products.push({
+            id: newId,
+            name: body.name || '',
+            category: body.category || 'Paddle',
+            stock: Number(body.stock || 0),
+            reorder_level: Number(body.reorder || 5),
+            price: Number(body.price || 0),
+            status: 'In Stock'
+          });
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true, id: newId }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'PUT') {
+          const item = db.products.find(p => p.id === id);
+          if (item) {
+            if (body.name) item.name = body.name;
+            if (body.category) item.category = body.category;
+            if (body.stock !== undefined) item.stock = Number(body.stock);
+            if (body.reorder !== undefined) item.reorder_level = Number(body.reorder);
+            if (body.price !== undefined) item.price = Number(body.price);
+            saveDb(db);
+          }
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (method === 'DELETE') {
+          db.products = db.products.filter(p => p.id !== id);
+          saveDb(db);
+          return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        if (id) {
+          const p = db.products.find(x => x.id === id);
+          return new Response(JSON.stringify({ ok: true, product: p }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ ok: true, rows: db.products, products: db.products }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
 
       return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
     }
 
     return originalFetch.apply(this, arguments);
@@ -2199,8 +2363,313 @@ input, select, textarea { font-family: inherit; }
 <div class="toast" id="toast"></div>
 <div class="loading" id="loading"><div class="spinner"></div></div>
 
-<script src="stacking.js?v=2.5"></script>
-<script src="rentals.js?v=2.5"></script>
+<script>
+/* === INLINED stacking.js === */
+function opEscape(value) {
+  return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function opDialog(id) {
+  let dialog = document.getElementById(id);
+  if (!dialog) {
+    dialog = document.createElement('dialog'); dialog.id = id; dialog.className = 'op-dialog';
+    document.body.appendChild(dialog);
+  }
+  return dialog;
+}
+function opError(message) {
+  const dialog = opDialog('opErrorDialog');
+  dialog.setAttribute('aria-labelledby', 'opErrorTitle');
+  dialog.innerHTML = `<button class="dialog-close" aria-label="Close error" onclick="this.closest('dialog').close()">×</button><h3 id="opErrorTitle">Unable to continue</h3><p>${opEscape(message)}</p><button autofocus class="btn cancel-error" onclick="this.closest('dialog').close()">Cancel</button>`;
+  if (!dialog.open) dialog.showModal();
+  dialog.querySelector('.cancel-error').focus();
+}
+function opToggleCourt(index) {
+  const court = opCourtState[index];
+  if (!court || !court.players.length) return;
+  if (!court.running && court.players.some(id => opGetPlayerRemaining(id) <= 0 || opGetPlayerCourtRemaining(id) <= 0)) {
+    opError('Time has expired. End this match to record the result.'); return;
+  }
+  if (court.running) opPauseCourtTimer(index); else opStartCourtTimer(index);
+}
+async function opEndMatch(index) {
+  const court = opCourtState[index];
+  if (!court?.players.length) return;
+  opPauseCourtTimer(index);
+  if (typeof opSaveCourtMatchResultAndQueue === 'function') {
+    await opSaveCourtMatchResultAndQueue(court.courtNumber);
+  }
+}
+function opRenderMatchDialog(courtNum) {
+  if (typeof opSaveCourtMatchResultAndQueue === 'function') {
+    opSaveCourtMatchResultAndQueue(courtNum);
+  }
+}
+async function opConfirmMatch(courtNum) {
+  if (typeof opSaveCourtMatchResultAndQueue === 'function') {
+    await opSaveCourtMatchResultAndQueue(courtNum);
+  }
+}
+let opTimerSyncTask;
+let opTimerSyncChain = Promise.resolve();
+function opScheduleTimerSync() {
+  clearTimeout(opTimerSyncTask);
+  opTimerSyncTask = setTimeout(() => {
+    if (!opSessionId) return;
+    const payload = {sessionId: opSessionId, players: opPlayers.map(p => ({
+      id:p.id, remaining:opGetPlayerRemaining(p.id), roundRemaining:opGetPlayerCourtRemaining(p.id),
+      running:opGetPlayerStartedAt(p.id)!==null, roundRunning:opGetPlayerCourtStartedAt(p.id)!==null
+    }))};
+    opTimerSyncChain = opTimerSyncChain.catch(()=>{}).then(async () => {
+      const r = await api('open_play.php?action=sync_timers', {method:'POST',body:JSON.stringify(payload)});
+      if (!r.ok) throw new Error(r.error || 'Could not save timers');
+    }).catch(error=>showToast('Timer synchronization failed: '+error.message,'error'));
+  }, 100);
+}
+function opRestoreTimers(rows) {
+  rows.forEach(row => {
+    const id = Number(row.player_id);
+    localStorage.setItem(opPlayerTimerKey(id,'remaining'),row.remaining);
+    localStorage.setItem(opPlayerCourtTimerKey(id,'remaining'),row.roundRemaining);
+    for (const [key,running] of [[opPlayerTimerKey(id,'started'),row.running],[opPlayerCourtTimerKey(id,'started'),row.roundRunning]]) {
+      if (running) localStorage.setItem(key,Date.now()); else localStorage.removeItem(key);
+    }
+  });
+}
+let opLogEntries = [];
+async function opLoadLog() {
+  const input = document.getElementById('opLogDate');
+  if (!input.value) input.value = new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Manila'});
+  try {
+    const r = await api('open_play.php?action=logbook&period='+document.getElementById('opLogPeriod').value+'&date='+input.value);
+    if (!r.ok) throw new Error(r.error);
+    opLogEntries = r.entries;
+    document.getElementById('opLogSummary').textContent = `${r.entries.length} player registration(s)`;
+    document.getElementById('opLogRows').innerHTML = r.entries.map((e, idx) => {
+      let expiredDisplay = '—';
+      let actionBtn = '—';
+      if (e.expired_at) {
+        expiredDisplay = `<span class="badge red" style="font-size:11px;" title="Expired at ${opEscape(e.expired_at)}">⏰ ${opEscape(e.expired_at)}</span>`;
+        actionBtn = `<button class="btn btn-primary" style="font-size:11px;padding:3px 8px;border-radius:6px;" onclick="opReRegisterFromLog('${opEscape(e.player_name)}', '${e.player_type}')" title="Re-register this player for a new 4-hour session">🔄 Re-register</button>`;
+      } else {
+        expiredDisplay = '<span class="badge" style="font-size:11px;background:rgba(34,197,94,0.18);color:#16a34a;border:1px solid rgba(34,197,94,0.3);">🟢 Active</span>';
+        actionBtn = '<span style="font-size:11px;color:var(--text-muted);font-style:italic;">In Session</span>';
+      }
+      return `<tr>
+        <td>${idx + 1}</td>
+        <td>${opEscape(e.registered_at)}</td>
+        <td><strong>${opEscape(e.player_name)}</strong></td>
+        <td>${e.player_type === 'Newbie' ? '<span class="badge-type-n">🟠 Novice</span>' : '<span class="badge-type-b">🔵 Beginner</span>'}</td>
+        <td>${expiredDisplay}</td>
+        <td>Session #${Number(e.session_id)}</td>
+        <td>${actionBtn}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="7">No registrations for this period.</td></tr>';
+  } catch(error) { opError('Could not load logbook: '+error.message); }
+}
+function opEditPayment(id) {
+  const entry = opLogEntries.find(e=>Number(e.id)===id); if (!entry) return;
+  const dialog = opDialog('opPaymentDialog');
+  dialog.innerHTML = `<button class="dialog-close" aria-label="Close payment" onclick="this.closest('dialog').close()">×</button><h3>Payment · ${opEscape(entry.player_name)}</h3><label>Amount (₱)<input id="opEditAmount" type="number" min="0" step="0.01" value="${Number(entry.amount)}"></label><select id="opEditStatus"><option value="unpaid" ${entry.payment_status==='unpaid'?'selected':''}>Unpaid</option><option value="paid" ${entry.payment_status==='paid'?'selected':''}>Paid</option></select><button class="btn btn-primary" onclick="opSavePayment(${id})">Save</button>`;
+  dialog.showModal();
+}
+async function opSavePayment(id) {
+  try {
+    const r = await api('open_play.php?action=payment',{method:'POST',body:JSON.stringify({id,amount:Number(document.getElementById('opEditAmount').value),paymentStatus:document.getElementById('opEditStatus').value})});
+    if (!r.ok) throw new Error(r.error);
+    document.getElementById('opPaymentDialog').close(); await opLoadLog(); renderSales();
+  } catch(error) { opError(error.message); }
+}
+function opExportLog() {
+  const rows = [
+    ['#', 'Registered', 'Player', 'Skill', 'Status / Expired Time', 'Session'],
+    ...opLogEntries.map((e, idx) => [
+      idx + 1,
+      e.registered_at,
+      e.player_name,
+      e.player_type === 'Newbie' ? 'Novice' : 'Beginner',
+      e.expired_at ? `Expired (${e.expired_at})` : 'Active',
+      e.session_id
+    ])
+  ];
+  const csv = rows.map(row => row.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  const a = document.createElement('a'); a.href = url; a.download = 'open-play-logbook.csv'; a.click(); URL.revokeObjectURL(url);
+}
+
+/* === INLINED rentals.js === */
+function rentalToday() { return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()); }
+function rentalMoney(value) { return '₱'+Number(value||0).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function rentalNumber(id) { const el=document.getElementById(id);if(!el) return NaN;const value=el.value;return value.trim()===''?NaN:Number(value); }
+function rentalInitialize() {
+  for (const id of ['crRate','crPersonRate','prPaddleRate','prBallRate']) {
+    const field=document.getElementById(id);
+    if (field && !field.dataset.initialized) { field.value=localStorage.getItem('rental_rate_'+id)||'';field.dataset.initialized='1'; }
+  }
+  if (!document.getElementById('crDate').value) document.getElementById('crDate').value=rentalToday();
+  rentalTotals();
+}
+function rentalTotals() {
+  const dur = rentalNumber('crDuration') || 0;
+  const rate = rentalNumber('crRate') || 0;
+  const persons = rentalNumber('crPersons') || 0;
+  const personRate = rentalNumber('crPersonRate') || 0;
+  const courtTotal = dur * rate;
+  const personTotal = persons * personRate;
+  const total = courtTotal + personTotal;
+  const totalEl = document.getElementById('crTotal');
+  if (totalEl) totalEl.textContent = 'Total: ' + rentalMoney(total);
+  const bd = document.getElementById('crTotalBreakdown');
+  if (bd) {
+    bd.textContent = `Court: ${rentalMoney(courtTotal)} (${dur} hr · ${rentalMoney(rate)}/hr) + Persons: ${rentalMoney(personTotal)} (${persons} person · ${rentalMoney(personRate)}/ea)`;
+  }
+  const prTotalEl = document.getElementById('prTotal');
+  if (prTotalEl) prTotalEl.textContent = 'Total: ' + rentalMoney((rentalNumber('prPaddles')||0)*(rentalNumber('prPaddleRate')||0)+(rentalNumber('prBalls')||0)*(rentalNumber('prBallRate')||0));
+}
+function crResetForm() {
+  for (const id of ['crCustomer','crContact','crCourt','crStart']) document.getElementById(id).value='';
+  const crp = document.getElementById('crPersonRate'); if (crp) crp.value = '';
+  document.getElementById('crPersons').value=1;document.getElementById('crDuration').value=1;document.getElementById('crDate').value=rentalToday();rentalTotals();
+}
+async function crSaveBooking() {
+  const p={customer:$('crCustomer').value.trim(),contact:$('crContact').value.trim(),persons:rentalNumber('crPersons'),court:$('crCourt').value,date:$('crDate').value,start:$('crStart').value,dur:rentalNumber('crDuration'),rate:rentalNumber('crRate'),personRate:rentalNumber('crPersonRate')||0};
+  if (!p.customer || !/^[+0-9() .-]{7,30}$/.test(p.contact) || !p.court || !p.date || !p.start || !Number.isInteger(p.persons) || p.persons<1 || !Number.isFinite(p.dur) || p.dur<=0 || !Number.isFinite(p.rate) || p.rate<0) { opError('Enter the customer, contact number, group size, court, date, time, duration and hourly rate.');return; }
+  const button=$('crSaveButton');button.disabled=true;
+  try {
+    const r=await api('court_rentals.php',{method:'POST',body:JSON.stringify(p)});if(!r.ok) throw new Error(r.error);
+    localStorage.setItem('rental_rate_crRate',p.rate);
+    if (p.personRate) localStorage.setItem('rental_rate_crPersonRate',p.personRate);
+    CR_BOOKINGS=(await api('court_rentals.php')).rows||[];
+    $('crFilterDate').value=p.date;crResetForm();crRender();showToast('Booking saved.','success');
+  } catch(error) { opError(error.message); } finally { button.disabled=false; }
+}
+function crRender() {
+  const filter=$('crFilterDate').value,search=$('crSearch').value.trim().toLowerCase();
+  const rows=CR_BOOKINGS.filter(b=>(!filter||b.rental_date===filter)&&(!search||[b.customer,b.contact_number,b.court].join(' ').toLowerCase().includes(search)));
+  $('crBookingsBody').innerHTML=rows.map(b=>`<tr><td><strong>${opEscape(b.customer)}</strong><small>${opEscape(b.contact_number||'No contact saved')}</small></td><td>${opEscape(b.court)}<small>${Number(b.person_count||1)} person(s)</small></td><td>${opEscape(b.rental_date)}<small>${opEscape(b.start_time)}</small></td><td>${Number(b.duration)} hr<small>${b.hourly_rate===null||b.hourly_rate===undefined?'Rate not saved':rentalMoney(b.hourly_rate)+'/hr'}</small></td><td>${rentalMoney(b.amount)}</td><td>${opEscape(b.status)}</td><td>${b.status==='Booked'?`<button class="btn btn-outline" onclick="crStatus(${Number(b.id)},'Ongoing')">Start</button>`:''}${b.status==='Ongoing'?`<button class="btn btn-primary" onclick="crStatus(${Number(b.id)},'Completed')">Complete</button>`:''}${['Booked','Ongoing'].includes(b.status)?`<button class="btn btn-secondary" onclick="crCancel(${Number(b.id)})">Cancel</button>`:''}</td></tr>`).join('')||'<tr><td colspan="7">No matching bookings.</td></tr>';
+  $('crFilterInfo').textContent=`${filter?'Bookings on '+filter:'All dates'} · ${rows.length} result(s)`;
+  $('crTodayBookings').textContent=CR_BOOKINGS.filter(b=>b.rental_date===rentalToday()&&b.status!=='Cancelled').length;
+  $('crOngoing').textContent=CR_BOOKINGS.filter(b=>b.status==='Ongoing').length;
+  $('crRevenue').textContent=rentalMoney(rows.filter(b=>b.status!=='Cancelled').reduce((sum,b)=>sum+Number(b.amount),0));
+}
+function crFilterToday() { $('crFilterDate').value=rentalToday();crRender(); }
+function crClearFilter() { $('crFilterDate').value='';crRender(); }
+async function crStatus(id,status) {
+  try { const r=await api('court_rentals.php?id='+id,{method:'PUT',body:JSON.stringify({status})});if(!r.ok) throw new Error(r.error);CR_BOOKINGS=(await api('court_rentals.php')).rows||[];crRender(); }
+  catch(error) { opError(error.message); }
+}
+function crCancel(id) {
+  const dialog=opDialog('rentalCancelDialog');
+  dialog.innerHTML=`<button class="dialog-close" aria-label="Close" onclick="this.closest('dialog').close()">×</button><h3>Cancel this booking?</h3><p>The booking remains in the history and is excluded from sales totals.</p><button class="btn btn-primary" autofocus onclick="this.closest('dialog').close()">Keep booking</button> <button class="btn btn-secondary" onclick="crStatus(${Number(id)},'Cancelled');this.closest('dialog').close()">Cancel booking</button>`;dialog.showModal();
+}
+function prResetForm() {
+  for(const id of ['prCustomer','prContact','prReturnTime']) $(id).value='';
+  $('prPaddles').value=0;$('prBalls').value=0;rentalTotals();
+}
+async function prSaveRental() {
+  const paddles=rentalNumber('prPaddles'),balls=rentalNumber('prBalls');
+  const p={customer:$('prCustomer').value.trim(),contact:$('prContact').value.trim(),paddles,balls,pr:paddles?rentalNumber('prPaddleRate'):0,br:balls?rentalNumber('prBallRate'):0,returnTime:$('prReturnTime').value};
+  if(!p.customer||!/^[+0-9() .-]{7,30}$/.test(p.contact)||!p.returnTime||!Number.isInteger(paddles)||!Number.isInteger(balls)||paddles<0||balls<0||paddles+balls<1||!Number.isFinite(p.pr)||!Number.isFinite(p.br)||p.pr<0||p.br<0) { opError('Enter a customer, contact number, at least one item, its rate and the return time.');return; }
+  const button=$('prSaveButton');button.disabled=true;
+  try {
+    const r=await api('paddle_rentals.php',{method:'POST',body:JSON.stringify(p)});if(!r.ok) throw new Error(r.error);
+    if(paddles) localStorage.setItem('rental_rate_prPaddleRate',p.pr);if(balls) localStorage.setItem('rental_rate_prBallRate',p.br);
+    PR_RENTALS=(await api('paddle_rentals.php')).rows||[];$('prStatusFilter').value='Rented';$('prFilterDate').value=rentalToday();prResetForm();prRender();showToast('Rental saved.','success');
+  } catch(error) { opError(error.message); } finally { button.disabled=false; }
+}
+function prRender() {
+  const date=$('prFilterDate').value,search=$('prSearch').value.trim().toLowerCase(),status=$('prStatusFilter').value;
+  const rows=PR_RENTALS.filter(r=>(!date||String(r.created_at).slice(0,10)===date)&&(!status||(r.status||'Rented')===status)&&(!search||[r.customer,r.contact_number].join(' ').toLowerCase().includes(search)));
+  $('prRentalsBody').innerHTML=rows.map(r=>`<tr><td><strong>${opEscape(r.customer)}</strong><small>${opEscape(r.contact_number||'No contact saved')}</small></td><td>${Number(r.paddles)} paddle(s) · ${Number(r.balls)} ball(s)<small>${r.paddle_rate==null?'—':rentalMoney(r.paddle_rate)} / paddle · ${r.ball_rate==null?'—':rentalMoney(r.ball_rate)} / ball</small></td><td>${rentalMoney(r.amount)}</td><td>${opEscape(String(r.created_at||'').slice(0,10))}<small>Due ${opEscape(r.return_time||'—')}</small>${r.returned_at?`<small>Returned ${opEscape(r.returned_at)}</small>`:''}</td><td>${opEscape(r.status||'Rented')}</td><td>${r.status!=='Returned'?`<button class="btn btn-primary" onclick="prReturn(${Number(r.id)})">Mark returned</button>`:'—'}</td></tr>`).join('')||'<tr><td colspan="6">No matching rentals.</td></tr>';
+  $('prFilterInfo').textContent=`${date?'Rentals on '+date:'All dates'} · ${rows.length} result(s)`;
+  const active=PR_RENTALS.filter(r=>r.status!=='Returned');
+  $('prTotalPaddles').textContent=active.reduce((sum,r)=>sum+Number(r.paddles),0);$('prTotalBalls').textContent=active.reduce((sum,r)=>sum+Number(r.balls),0);
+  $('prCurrentlyRented').textContent=active.reduce((sum,r)=>sum+Number(r.paddles)+Number(r.balls),0);$('prRevenue').textContent=rentalMoney(rows.reduce((sum,r)=>sum+Number(r.amount),0));
+}
+async function prReturn(id) {
+  try { const r=await api('paddle_rentals.php?id='+id,{method:'PUT'});if(!r.ok) throw new Error(r.error);PR_RENTALS=(await api('paddle_rentals.php')).rows||[];prRender();showToast('Items returned. Sale kept in history.','success'); }
+  catch(error) { opError(error.message); }
+}
+function prFilterToday() { $('prFilterDate').value=rentalToday();prRender(); }
+function prClearFilter() { $('prFilterDate').value='';prRender(); }
+let salesEntries=[];
+function reportDateMatches(value) {
+  const date=$('opLogDate').value||rentalToday(),period=$('opLogPeriod').value;
+  const start=new Date(date+'T00:00:00Z');
+  if(period==='week') start.setUTCDate(start.getUTCDate()-((start.getUTCDay()+6)%7));
+  if(period==='month') start.setUTCDate(1);
+  const end=new Date(start);if(period==='month') end.setUTCMonth(end.getUTCMonth()+1);else end.setUTCDate(end.getUTCDate()+(period==='week'?7:1));
+  const day=String(value||'').slice(0,10);return day>=start.toISOString().slice(0,10)&&day<end.toISOString().slice(0,10);
+}
+async function refreshReports() {
+  try {
+    const [courts,paddles]=await Promise.all([api('court_rentals.php'),api('paddle_rentals.php')]);
+    if(!courts.ok||!paddles.ok) throw new Error('Could not load rental sales.');
+    CR_BOOKINGS=courts.rows||[];PR_RENTALS=paddles.rows||[];
+    await opLoadLog();renderSales();
+  } catch(error) { opError(error.message); }
+}
+function renderSales() {
+  salesEntries=[...CR_BOOKINGS.filter(b=>b.status!=='Cancelled'&&reportDateMatches(b.rental_date)).map(b=>({date:b.rental_date,source:'Court Rental',customer:b.customer,ref:'Court #'+b.id,amount:Number(b.amount)})),...PR_RENTALS.filter(r=>reportDateMatches(r.created_at)).map(r=>({date:String(r.created_at).slice(0,10),source:'Paddle Rental',customer:r.customer,ref:'Rental #'+r.id,amount:Number(r.amount)})),...opLogEntries.filter(e=>e.payment_status==='paid'&&reportDateMatches(e.registered_at)).map(e=>({date:String(e.registered_at).slice(0,10),source:'Open Play',customer:e.player_name,ref:'Open Play #'+e.id,amount:Number(e.amount)}))].sort((a,b)=>b.date.localeCompare(a.date));
+  
+  const totals = {
+    'Court Rental': salesEntries.filter(e=>e.source==='Court Rental').reduce((sum,e)=>sum+e.amount,0),
+    'Paddle Rental': salesEntries.filter(e=>e.source==='Paddle Rental').reduce((sum,e)=>sum+e.amount,0),
+    'Open Play': salesEntries.filter(e=>e.source==='Open Play').reduce((sum,e)=>sum+e.amount,0),
+    'Total': salesEntries.reduce((sum,e)=>sum+e.amount,0)
+  };
+  
+  $('salesSummary').innerHTML=[
+    { label: 'Total Sales', val: totals['Total'], color: 'green', icon: '💰' },
+    { label: 'Court Rentals', val: totals['Court Rental'], color: 'blue', icon: '🏟️' },
+    { label: 'Paddle Rentals', val: totals['Paddle Rental'], color: 'orange', icon: '🏸' },
+    { label: 'Open Play', val: totals['Open Play'], color: 'gray', icon: '▶️' }
+  ].map(s=>`<div class="kpi ${s.color}"><div><div class="kpi-label">${s.icon} ${s.label}</div><div class="kpi-value">${rentalMoney(s.val)}</div></div></div>`).join('');
+  
+  const chartBox = $('salesChartContent');
+  if (chartBox) {
+    const maxVal = totals['Total'] || 1;
+    const crPct = Math.round((totals['Court Rental'] / maxVal) * 100);
+    const prPct = Math.round((totals['Paddle Rental'] / maxVal) * 100);
+    const opPct = Math.round((totals['Open Play'] / maxVal) * 100);
+
+    chartBox.innerHTML = `
+      <div style="margin-bottom:8px;">
+        <div style="height:22px;display:flex;border-radius:8px;overflow:hidden;background:rgba(0,0,0,0.06);margin-bottom:12px;">
+          <div style="width:${crPct}%;background:#3b82f6;transition:width 0.4s;" title="Court Rentals: ${crPct}%"></div>
+          <div style="width:${prPct}%;background:#f59e0b;transition:width 0.4s;" title="Paddle Rentals: ${prPct}%"></div>
+          <div style="width:${opPct}%;background:#10b981;transition:width 0.4s;" title="Open Play: ${opPct}%"></div>
+        </div>
+        
+        <div class="sales-bar-row">
+          <div class="sales-bar-label"><span style="color:#3b82f6;">●</span> Court Rentals</div>
+          <div class="sales-bar-track"><div class="sales-bar-fill" style="width:${crPct}%;background:#3b82f6;">${crPct > 6 ? crPct + '%' : ''}</div></div>
+          <div class="sales-bar-val">${rentalMoney(totals['Court Rental'])}</div>
+        </div>
+        <div class="sales-bar-row">
+          <div class="sales-bar-label"><span style="color:#f59e0b;">●</span> Paddle Rentals</div>
+          <div class="sales-bar-track"><div class="sales-bar-fill" style="width:${prPct}%;background:#f59e0b;">${prPct > 6 ? prPct + '%' : ''}</div></div>
+          <div class="sales-bar-val">${rentalMoney(totals['Paddle Rental'])}</div>
+        </div>
+        <div class="sales-bar-row">
+          <div class="sales-bar-label"><span style="color:#10b981;">●</span> Open Play</div>
+          <div class="sales-bar-track"><div class="sales-bar-fill" style="width:${opPct}%;background:#10b981;">${opPct > 6 ? opPct + '%' : ''}</div></div>
+          <div class="sales-bar-val">${rentalMoney(totals['Open Play'])}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  const selected=$('salesSource').value;
+  $('salesRows').innerHTML=salesEntries.filter(e=>!selected||e.source===selected).map(e=>`<tr><td>${opEscape(e.date)}</td><td>${e.source}</td><td>${opEscape(e.customer)}</td><td>${e.ref}</td><td>${rentalMoney(e.amount)}</td></tr>`).join('')||'<tr><td colspan="5">No sales for this period.</td></tr>';
+}
+function exportSales() {
+  const selected=$('salesSource').value;
+  const rows=[['Date','Source','Customer','Reference','Amount'],...salesEntries.filter(e=>!selected||e.source===selected).map(e=>[e.date,e.source,e.customer,e.ref,e.amount.toFixed(2)])];
+  const csv=rows.map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));const a=document.createElement('a');a.href=url;a.download='sales-'+$('opLogPeriod').value+'-'+$('opLogDate').value+'.csv';a.click();URL.revokeObjectURL(url);
+}
+
+</script>
 <script>
 window.opEndMatch = async function(index) {
   const court = opCourtState[index];
@@ -2329,12 +2798,21 @@ async function onLoggedIn(user) {
   const app = $('app'); if (app) app.classList.add('visible');
   const n = $('userNameDisplay'); if (n) n.textContent = user.name || user.email;
   const r = $('userRoleDisplay'); if (r) r.textContent = user.role || 'Administrator';
+  
+  // Immediate render on login so courts and panels are never blank
+  try { opRenderCourts(); } catch(e) {}
+
   setLoading(true);
   try {
     await bootstrapData();
+  } catch (e) {
+    console.warn('Bootstrap warning:', e);
+  }
+  try {
     renderAll();
     await opInit();
   } catch (err) {
+    console.error('Load error:', err);
     showToast('Load error: ' + err.message, 'error');
   } finally { setLoading(false); }
 }
@@ -2356,14 +2834,15 @@ async function bootstrapData() {
     api('court_rentals.php').catch(() => ({ ok:false, rows:[] })),
     api('paddle_rentals.php').catch(() => ({ ok:false, rows:[] }))
   ]);
-  PRODUCTS = results[0].products || [];
-  STOCK_IN = results[1].rows || [];
-  STOCK_OUT = results[2].rows || [];
-  SUPPLIERS = results[3].rows || [];
-  USERS = results[4].rows || [];
+  PRODUCTS = results[0].products || results[0].rows || [];
+  STOCK_IN = results[1].rows || results[1].stockIn || [];
+  STOCK_OUT = results[2].rows || results[2].stockOut || [];
+  SUPPLIERS = results[3].rows || results[3].suppliers || [];
+  USERS = results[4].rows || results[4].users || [];
   CR_BOOKINGS = results[5].rows || [];
   PR_RENTALS = results[6].rows || [];
 }
+
     
     /* ========== GLOBAL RENDER ========== */
 function renderAll() {
@@ -4808,10 +5287,10 @@ function opUpdateThemeToggleUI(theme) {
   if (icon && txt) {
     if (theme === 'dark') {
       icon.textContent = '☀️';
-      txt.textContent = 'Light Mode';
+      txt.textContent = 'Switch to Light Mode';
     } else {
       icon.textContent = '🌙';
-      txt.textContent = 'Dark Mode';
+      txt.textContent = 'Switch to Dark Mode';
     }
   }
 }

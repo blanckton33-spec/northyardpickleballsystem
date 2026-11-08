@@ -102,7 +102,9 @@ export let suppliers = [
   { id: 1, name: 'Pickleball Central PH', contact_person: 'Mark Tan', phone: '+63 917 555 0192', email: 'sales@pickleballcentral.ph', status: 'Active' }
 ];
 export let users = [
-  { id: 1, name: 'Admin', email: 'admin@pickleball.local', role: 'Administrator', status: 'Active', created_at: todayStr }
+  { id: 1, name: 'Admin', email: 'admin@pickleball.local', role: 'Administrator', status: 'Active', created: '2026-11-01 10:00:00', created_at: '2026-11-01 10:00:00' },
+  { id: 2, name: 'Coach Dave', email: 'dave@pickleball.local', role: 'Staff', status: 'Active', created: '2026-11-02 14:30:00', created_at: '2026-11-02 14:30:00' },
+  { id: 3, name: 'Court Marshal Sarah', email: 'sarah@pickleball.local', role: 'Staff', status: 'Active', created: '2026-11-03 09:15:00', created_at: '2026-11-03 09:15:00' }
 ];
 
 export function getGamesPlayed(playerId) {
@@ -116,3 +118,7 @@ export function setCourtTimers(newT) { courtTimers = newT; }
 export function setCourtRentals(newR) { courtRentals = newR; }
 export function setPaddleRentals(newR) { paddleRentals = newR; }
 export function setCurrentUser(newU) { currentUser = newU; }
+export function setUsers(newU) { users = newU; }
+export function setSuppliers(newS) { suppliers = newS; }
+export function setProducts(newP) { products = newP; }
+
