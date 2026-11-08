@@ -1,17 +1,67 @@
 {
   "cleanUrls": true,
   "rewrites": [
-    { "source": "/api/open_play.php", "destination": "/api/open_play" },
-    { "source": "/api/court_rentals.php", "destination": "/api/court_rentals" },
-    { "source": "/api/paddle_rentals.php", "destination": "/api/paddle_rentals" },
-    { "source": "/api/auth.php", "destination": "/api/auth" },
-    { "source": "/api/users.php", "destination": "/api/users" },
-    { "source": "/api/products.php", "destination": "/api/products" },
-    { "source": "/api/stock.php", "destination": "/api/stock" },
-    { "source": "/api/suppliers.php", "destination": "/api/suppliers" },
-    { "source": "/display", "destination": "/display.html" },
-    { "source": "/display.php", "destination": "/display.html" },
-    { "source": "/openplay", "destination": "/index.html" },
-    { "source": "/openplay.php", "destination": "/index.html" }
+    {
+      "source": "/api/open_play.php",
+      "destination": "/api/open_play"
+    },
+    {
+      "source": "/api/court_rentals.php",
+      "destination": "/api/court_rentals"
+    },
+    {
+      "source": "/api/paddle_rentals.php",
+      "destination": "/api/paddle_rentals"
+    },
+    {
+      "source": "/api/auth.php",
+      "destination": "/api/auth"
+    },
+    {
+      "source": "/api/users.php",
+      "destination": "/api/users"
+    },
+    {
+      "source": "/api/products.php",
+      "destination": "/api/products"
+    },
+    {
+      "source": "/api/stock.php",
+      "destination": "/api/stock"
+    },
+    {
+      "source": "/api/suppliers.php",
+      "destination": "/api/suppliers"
+    },
+    {
+      "source": "/display",
+      "destination": "/display.html"
+    },
+    {
+      "source": "/display.php",
+      "destination": "/display.html"
+    },
+    {
+      "source": "/openplay",
+      "destination": "/openplay.html"
+    },
+    {
+      "source": "/openplay.php",
+      "destination": "/openplay.html"
+    }
+  ],
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": null,
+  "headers": [
+    {
+      "source": "/api/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "private, no-store"
+        }
+      ]
+    }
   ]
 }
