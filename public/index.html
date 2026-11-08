@@ -865,7 +865,7 @@ input, select, textarea { font-family: inherit; }
       <div class="forgot-link"><a href="#" onclick="event.preventDefault();showToast('Contact admin to reset password.','info')">Forgot password?</a></div>
       <div class="auth-toggle">
         <span id="toggleText">Don't have an account?</span>
-        <a id="toggleLink" onclick="toggleAuthMode()">Sign up</a>
+        <span id="toggleLink">Contact your administrator for an account.</span>
       </div>
     </form>
   </div>
@@ -2056,7 +2056,7 @@ window.openUserModal = function(u = null) {
         <select id="uStatus"><option ${u?.status==='Active'?'selected':''}>Active</option><option ${u?.status==='Inactive'?'selected':''}>Inactive</option></select>
       </div>
     </div>
-    ${!isEdit?`<div class="form-group"><label>Password</label><input id="uPass" type="password" /></div>`:''}
+    <div class="form-group"><label>${isEdit ? 'New password (leave blank to keep)' : 'Password (12+ characters)'}</label><input id="uPass" type="password" minlength="12" autocomplete="new-password" /></div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveUser(${u?.id||'null'})">${isEdit?'Update':'Save'}</button>
@@ -2071,7 +2071,9 @@ window.saveUser = async function(id) {
     role: $('uRole').value,
     status: $('uStatus').value
   };
-  if (!id) p.password = $('uPass')?.value || 'changeme';
+  const password = $('uPass')?.value || '';
+  if (!id || password) p.password = password;
+  if ((!id || password) && password.length < 12) { showToast('Use a password of at least 12 characters.', 'error'); return; }
   if (!p.name || !p.email) { showToast('Name and email are required.','error'); return; }
   const r = id
     ? await api('users.php', { method:'PUT', body: JSON.stringify(p) })

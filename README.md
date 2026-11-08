@@ -1,23 +1,47 @@
-# North Yard — exact original interface on Vercel
+# North Yard Pickleball — Vercel + Neon
 
-This build serves the original dashboard and live display, including current queue fixes and derby announcement. The former React demo and mock localStorage database are not the deployed entry points. Existing React source is retained for reference only.
+The original North Yard dashboard and live display now use native Node.js APIs and persistent PostgreSQL. No PHP host, browser-only database, sample players or automatic administrator login is used by this deployment.
 
-## Backend required
+[Deploy on Vercel](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fblanckton33-spec%2Fnorthyardpickleballsystem&env=ADMIN_EMAIL,ADMIN_PASSWORD&project-name=northyard-pickleball)
 
-Set `PHP_BACKEND_ORIGIN` in Vercel to the HTTPS origin (optionally including a subdirectory) of a compatible PHP/MySQL host. The Node API adapters forward requests and session cookies to the original PHP API. No database credentials belong in frontend code. Without configuration API calls return 503; no sample data or automatic administrator login is supplied.
+Alternatively import this GitHub repository into a new Vercel project. Select the `main` branch. Build settings are already in `vercel.json`.
 
-InfinityFree free hosting blocks this external API access. Do not point the adapter at it and expect it to work. Move the PHP API and MySQL database to compatible hosting, or undertake a separate Node/database migration. Vercel Hobby permits non-commercial personal projects only; this business requires an appropriate plan.
+## Setup
 
-## Preserve all records
+1. Import/deploy the repository in Vercel.
+2. In that project's **Storage**, create a **Neon** database and connect it to Production. Verify the integration added `DATABASE_URL` (the pooled URL).
+3. In **Settings → Environment Variables**, add `ADMIN_EMAIL` and `ADMIN_PASSWORD` (at least 12 characters). These are the initial administrator credentials, not an existing InfinityFree account. Do not commit them to GitHub.
+4. Redeploy after adding the database and variables. Open the site and log in. Tables are created safely on the first database request; the initial administrator is created on the first login attempt when no users exist.
+5. Use Users to add staff and administrators. The initial password is hashed, sessions expire after 12 hours, and login attempts are limited. Change passwords through Users. You may remove ADMIN_PASSWORD from Vercel after initialization.
 
-1. Export the CURRENT production MySQL database using phpMyAdmin, including users, password hashes, match results, timers, queue, logbook, payments, inventory and rentals. The bundled old SQL file is not a backup of current records.
-2. Import the export into the new MySQL host. Copy the working `htdocs/api/*.php` backend there and configure that host's `api/config.php` privately.
-3. Keep a backup and stop writes during final cutover. Verify row counts and sample records; preserve IDs and password hashes.
-4. Set `PHP_BACKEND_ORIGIN`, deploy, and verify actual login/logout, roles, two-device queue synchronization, timers, payments, rentals and reports. PHP remains responsible for authorization and transactions.
-5. Keep the original running system available until verification is complete. This repository change does not migrate or modify any production database.
+The first deployment may show a database connection message until Neon is attached and the deployment is refreshed. The repository does not provision or charge for a Neon/Vercel account. Vercel Hobby is restricted to non-commercial personal use; choose a suitable plan for business operation.
 
-## Build
+## Included behavior
 
-`npm run build` copies the canonical `public/` interface into `dist/`. Failures are not suppressed. `npm test` verifies the adapter and frontend source. Do not upload PHP source or credentials into `public/`. `display.php` is a compatibility URL rewritten to static `display.html`; the live data comes from the API.
+- Original dashboard, mobile/desktop display, derby poster and registration links.
+- Real authentication, persistent sessions, administrator-controlled accounts; no public admin signup.
+- Beginner/novice separation, maximum four players per queue, sequential numbering, new arrivals ahead of returning groups, separate two-player return queues, no games-played priority.
+- Continuous four-hour player allowance, round timers, server-enforced expiration, logbook and payment records.
+- Court reservation overlap checks, entered rates (including zero), equipment returns, retained cancellation history.
+- Inventory base stock plus stock movements, suppliers and existing client-side reports.
 
-Do not deploy until a compatible backend and a current database export are ready. No live migration has been performed by this repair.
+## Existing records and backups
+
+This deployment starts empty. It does **not** copy the live InfinityFree users, passwords, players or historical records. Keep the current production database export and running system until any migration has been completed and verified. The old MySQL SQL file cannot be imported directly into this Postgres schema.
+
+Data lives in Neon, independent of Vercel deployments. Never reset/delete the database to update the website. Configure backups appropriate to the business; free-tier retention is limited.
+
+## Implementation and limits
+
+The small single-venue application's operational state is stored as a JSONB document in `northyard_state`; users and authentication sessions have their own tables. Database transactions and an advisory lock serialize operations to prevent lost updates across Vercel instances. Unchanged snapshots are not rewritten. This prioritizes consistency for the current small installation; growing history or high concurrency will require splitting operational data into indexed tables. There is no in-memory production persistence.
+
+`public/` is the canonical UI. Older root HTML/React files are retained for reference and are not built. The build uses an explicit asset list so source/API files and secrets cannot be published as static files. PHP-looking URLs are compatibility rewrites to Node functions.
+
+## Development and checks
+
+- `npm ci`
+- `npm test` — domain workflows and embedded PostgreSQL integration tests (PGlite). The embedded test substitutes the advisory lock call; actual Neon/serverless concurrency must be checked on the deployed project.
+- `npm run build`
+- `DATABASE_URL=... ADMIN_EMAIL=... ADMIN_PASSWORD=... npm run dev` — prefer exporting secrets through your shell/session rather than recording them in shell history. Local HTTP testing requires appropriate cookie handling; deployed login uses Secure cookies over HTTPS.
+
+Live Neon connectivity, Vercel deployment and production data migration are separate from local verification. They require your connected project and database.

@@ -1,38 +1,17 @@
-const endpoints = new Set(['auth', 'users', 'open_play', 'court_rentals', 'paddle_rentals', 'products', 'stock', 'suppliers']);
-export function backendHandler(endpoint) {
-  if (!endpoints.has(endpoint)) throw new Error('Unknown API');
-  return async function handler(req, res) {
-    res.setHeader('Cache-Control', 'private, no-store');
-    const fail = (status, error) => res.status(status).json({ ok: false, error });
-    const origin = process.env.PHP_BACKEND_ORIGIN;
-    if (!origin) return fail(503, 'Backend is not connected. Configure PHP_BACKEND_ORIGIN with the compatible PHP/MySQL host.');
-    let target;
-    try {
-      const base = new URL(origin);
-      if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash) throw new Error();
-      if (base.host === req.headers.host) throw new Error();
-      target = new URL(`${base.pathname.replace(/\/$/, '')}/api/${endpoint}.php`, base.origin);
-      target.search = new URL(req.url, 'https://local.invalid').search;
-    } catch { return fail(503, 'Backend URL configuration is invalid.'); }
-    const method = req.method || 'GET';
-    if (!['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'].includes(method)) return fail(405, 'Method not allowed');
-    if (method === 'OPTIONS') return res.status(204).end();
-    const headers = { Accept: 'application/json' };
-    if (req.headers.cookie) headers.Cookie = req.headers.cookie;
-    let body;
-    if (!['GET', 'HEAD'].includes(method) && req.body !== undefined) {
-      headers['Content-Type'] = req.headers['content-type'] || 'application/json';
-      body = typeof req.body === 'string' || Buffer.isBuffer(req.body) ? req.body : JSON.stringify(req.body);
-    }
-    try {
-      const upstream = await fetch(target, { method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(20000) });
-      if (!(upstream.headers.get('content-type') || '').includes('application/json')) {
-        return fail(502, 'Backend did not return JSON. Verify the PHP host permits server-to-server API access; InfinityFree free hosting does not.');
-      }
-      const cookies = upstream.headers.getSetCookie();
-      if (cookies.length) res.setHeader('Set-Cookie', cookies.map(cookie => cookie.replace(/;\s*Domain=[^;]+/gi, '').replace(/;\s*Path=[^;]+/gi, '; Path=/')));
-      const data = await upstream.json();
-      return res.status(upstream.status).json(data);
-    } catch { return fail(502, 'Could not reach the database backend. Please retry or check the PHP host.'); }
-  };
-}
+import {transaction} from './database.js';
+import {auth,currentUser} from './auth.js';
+import users from './users.js';
+import openPlay from './open_play.js';
+import rentals from './rentals.js';
+import inventory from './inventory.js';
+const handlers={open_play:openPlay,court_rentals:rentals('court'),paddle_rentals:rentals('paddle'),products:inventory('products'),stock:inventory('stock'),suppliers:inventory('suppliers')};
+export function backendHandler(endpoint,runTransaction=transaction){return async(req,res)=>{res.setHeader('Cache-Control','private, no-store');try{
+ req.query=Object.fromEntries(new URL(req.url,'https://local.invalid').searchParams);req.body=typeof req.body==='string'?JSON.parse(req.body):req.body||{};
+ if(!['GET','POST','PUT','DELETE'].includes(req.method))return res.status(405).json({ok:false,error:'Method not allowed'});
+ if(req.method!=='GET'&&req.headers.origin&&new URL(req.headers.origin).host!==req.headers.host)return res.status(403).json({ok:false,error:'Request origin does not match.'});
+ const result=await runTransaction(async(db,state)=>{const buffer={code:200,headers:{},status(n){this.code=n;return this;},setHeader(k,v){this.headers[k]=v;},json(data){this.data=data;return this;}};
+ if(endpoint==='auth'){await auth(db,req,buffer);return buffer;}
+ const publicDisplay=endpoint==='open_play'&&req.method==='GET'&&req.query.action==='get_display_data';const user=publicDisplay?null:await currentUser(db,req);if(!publicDisplay&&!user)return buffer.status(401).json({ok:false,error:'Please sign in.'});
+ if(endpoint==='users')await users(db,req,buffer,user);else if(handlers[endpoint])await handlers[endpoint](req,buffer,state);else return buffer.status(404).json({ok:false,error:'Unknown API'});return buffer;});
+ for(const [k,v] of Object.entries(result.headers))res.setHeader(k,v);return res.status(result.code).json(result.data);
+ }catch(error){const status=error.status||(error.code==='23505'?409:process.env.DATABASE_URL?500:503);return res.status(status).json({ok:false,error:error.status?error.message:error.code==='23505'?'This record already exists.':!process.env.DATABASE_URL?'Connect Neon in Vercel Storage and redeploy.':'Database operation failed. Please retry.'});}};}
