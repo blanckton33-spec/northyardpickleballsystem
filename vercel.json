@@ -1,8 +1,9 @@
 {
+  "cleanUrls": true,
   "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/display", "destination": "/display.html" },
+    { "source": "/display.php", "destination": "/display.html" },
+    { "source": "/openplay", "destination": "/index.html" },
+    { "source": "/openplay.php", "destination": "/index.html" }
   ]
 }

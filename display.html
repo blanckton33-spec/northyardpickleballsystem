@@ -1,0 +1,1561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+<meta name="theme-color" content="#071b15" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>🏓 North Yard Open Play — Live Court & Queue Display</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@700;800&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+:root {
+  --bg: #071b15;
+  --card: rgba(255,255,255,.06);
+  --border: rgba(255,255,255,.12);
+  --accent: #22c55e;
+  --accent-light: #4ade80;
+  --blue: #3b82f6;
+  --blue-light: #60a5fa;
+  --orange: #f59e0b;
+  --orange-light: #fbbf24;
+  --red: #ef4444;
+  --red-light: #f87171;
+  --text: #ffffff;
+  --muted: rgba(255,255,255,.62);
+}
+html, body {
+  font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: radial-gradient(circle at 15% 10%, rgba(34,197,94,.14), transparent 45%),
+              radial-gradient(circle at 85% 90%, rgba(59,130,246,.12), transparent 45%),
+              var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+body {
+  padding: 20px 24px 40px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.brand { display: flex; align-items: center; gap: 14px; }
+.brand-logo {
+  width: 50px; height: 50px;
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.08);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.brand-logo img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.brand h1 { font-size: 22px; font-weight: 800; letter-spacing: 1.2px; }
+.brand p { font-size: 10.5px; opacity: 0.65; letter-spacing: 2.5px; margin-top: 2px; font-weight: 600; }
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.live-badge {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; font-weight: 800; color: var(--accent-light);
+  background: rgba(34,197,94,.16);
+  padding: 6px 14px; border-radius: 999px;
+  border: 1px solid rgba(34,197,94,.4);
+  letter-spacing: 0.5px;
+}
+.live-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent-light);
+  box-shadow: 0 0 8px var(--accent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .45; transform: scale(.75); }
+}
+#clock {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px; font-weight: 700;
+  color: rgba(255,255,255,.88);
+  background: rgba(255,255,255,.06);
+  padding: 6px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+/* ============================================================
+   MOBILE PLAYER SELECTION & NOTIFICATION CARD
+   ============================================================ */
+.player-notifier-card {
+  background: linear-gradient(135deg, rgba(34,197,94,.14), rgba(6,78,59,.18));
+  border: 1.5px solid rgba(34,197,94,.38);
+  border-radius: 18px;
+  padding: 16px 18px;
+  margin-bottom: 22px;
+  box-shadow: 0 10px 25px rgba(0,0,0,.25);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.pnc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pnc-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #fff;
+}
+.pnc-icon {
+  width: 32px; height: 32px; border-radius: 10px;
+  background: rgba(34,197,94,.25);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; color: #4ade80;
+}
+.pnc-desc {
+  font-size: 12.5px;
+  color: rgba(255,255,255,.75);
+  line-height: 1.4;
+}
+
+/* Unselected row / Searchable Player Picker */
+.pnc-select-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  position: relative;
+  width: 100%;
+}
+.pnc-search-container {
+  position: relative;
+  width: 100%;
+}
+.pnc-search-input-wrap {
+  display: flex;
+  align-items: center;
+  position: relative;
+  width: 100%;
+  background: rgba(0,0,0,.45);
+  border: 1.5px solid rgba(255,255,255,.22);
+  border-radius: 14px;
+  padding: 0 14px;
+  height: 48px;
+  box-sizing: border-box;
+  transition: border-color .2s, box-shadow .2s;
+}
+.pnc-search-input-wrap:focus-within {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 3px rgba(34,197,94,.25);
+  background: rgba(0,0,0,.65);
+}
+.pnc-search-lens {
+  font-size: 16px;
+  margin-right: 10px;
+  opacity: .85;
+  user-select: none;
+}
+.pnc-search-input {
+  flex: 1;
+  height: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: inherit;
+}
+.pnc-search-input::placeholder {
+  color: rgba(255,255,255,.45);
+  font-weight: 500;
+}
+.pnc-search-clear-btn {
+  background: rgba(255,255,255,.15);
+  border: none;
+  color: #fff;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  margin-left: 8px;
+}
+.pnc-search-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 290px;
+  overflow-y: auto;
+  background: #0b1a15;
+  border: 1.5px solid rgba(34,197,94,.38);
+  border-radius: 14px;
+  box-shadow: 0 14px 36px rgba(0,0,0,.7);
+  z-index: 1000;
+  -webkit-overflow-scrolling: touch;
+  padding: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(34,197,94,.4) transparent;
+}
+.pnc-search-dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+.pnc-search-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pnc-search-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(34,197,94,.4);
+  border-radius: 999px;
+}
+.pnc-dropdown-empty {
+  padding: 16px;
+  text-align: center;
+  color: rgba(255,255,255,.5);
+  font-size: 13px;
+  font-style: italic;
+}
+.pnc-player-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background .15s ease;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+.pnc-player-item:last-child {
+  border-bottom: none;
+}
+.pnc-player-item:hover,
+.pnc-player-item:active {
+  background: rgba(34,197,94,.18);
+}
+.pnc-player-left {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.pnc-player-name {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #f0fdf4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pnc-player-sub {
+  font-size: 11.5px;
+  color: rgba(255,255,255,.6);
+  margin-top: 1px;
+}
+.pnc-player-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.pnc-player-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #93c5fd;
+  background: rgba(59,130,246,.18);
+  border: 1px solid rgba(59,130,246,.35);
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+.pnc-player-time {
+  font-size: 11px;
+  font-weight: 700;
+  color: #86efac;
+  background: rgba(34,197,94,.18);
+  border: 1px solid rgba(34,197,94,.35);
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+.pnc-player-arrow {
+  font-size: 13px;
+  color: #4ade80;
+  margin-left: 2px;
+}
+
+/* Selected status banner */
+.pnc-active-box {
+  background: rgba(0,0,0,.25);
+  border: 1px solid rgba(34,197,94,.3);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.pnc-user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pnc-user-name {
+  font-size: 16px;
+  font-weight: 800;
+  color: #86efac;
+}
+.pnc-loc-pill {
+  font-size: 11px;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(34,197,94,.2);
+  color: #4ade80;
+  border: 1px solid rgba(34,197,94,.4);
+}
+.pnc-loc-pill.court {
+  background: rgba(59,130,246,.2);
+  color: #93c5fd;
+  border-color: rgba(59,130,246,.45);
+}
+.pnc-loc-pill.warn {
+  background: rgba(245,158,11,.25);
+  color: #fbbf24;
+  border-color: rgba(245,158,11,.5);
+}
+.pnc-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.btn-pnc-action {
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.2);
+  background: rgba(255,255,255,.08);
+  color: #fff;
+  cursor: pointer;
+  transition: background .15s ease;
+}
+.btn-pnc-action:hover { background: rgba(255,255,255,.16); }
+
+/* Mobile View Tabs */
+.mobile-view-tabs {
+  display: none;
+  background: rgba(0,0,0,.3);
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  gap: 4px;
+  margin-bottom: 18px;
+}
+.m-tab-btn {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+}
+.m-tab-btn.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(34,197,94,.35);
+}
+
+/* Sections */
+.section-title {
+  font-size: 13.5px; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 2px;
+  color: var(--muted);
+  margin-bottom: 16px;
+  display: flex; align-items: center; gap: 12px;
+}
+.section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Courts Grid */
+.courts-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 30px;
+}
+
+.court-card {
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  transition: all .25s ease;
+  position: relative;
+  overflow: hidden;
+}
+.court-card.newbie {
+  border-color: rgba(245,158,11,.4);
+  background: linear-gradient(180deg, rgba(245,158,11,.09) 0%, rgba(255,255,255,.04) 100%);
+}
+.court-card.beginner {
+  border-color: rgba(59,130,246,.4);
+  background: linear-gradient(180deg, rgba(59,130,246,.09) 0%, rgba(255,255,255,.04) 100%);
+}
+
+.court-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px; gap: 8px;
+}
+.court-header-left {
+  display: flex; align-items: center; gap: 10px;
+}
+.court-icon {
+  width: 38px; height: 38px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; flex-shrink: 0;
+}
+.court-icon.newbie { background: linear-gradient(135deg,#f59e0b,#d97706); box-shadow: 0 4px 12px rgba(245,158,11,.3); }
+.court-icon.beginner { background: linear-gradient(135deg,#3b82f6,#2563eb); box-shadow: 0 4px 12px rgba(59,130,246,.3); }
+
+.court-name { font-size: 18px; font-weight: 800; letter-spacing: 0.5px; }
+.court-sub { font-size: 11px; color: var(--muted); font-weight: 600; }
+
+.court-type-pill {
+  font-size: 10.5px; font-weight: 800;
+  padding: 3px 10px; border-radius: 999px;
+  letter-spacing: 0.5px;
+}
+.court-type-pill.newbie { background: rgba(245,158,11,.2); color: #fbbf24; border: 1px solid rgba(245,158,11,.45); }
+.court-type-pill.beginner { background: rgba(59,130,246,.2); color: #93c5fd; border: 1px solid rgba(59,130,246,.45); }
+
+/* Prominent Live Court Timer */
+.court-timer-card {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 15px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.court-timer-card.running {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+.court-timer-card.warning {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.5);
+  animation: timer-pulse-warn 1.4s infinite;
+}
+.court-timer-card.expired {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.55);
+  animation: timer-pulse-alert 1s infinite;
+}
+
+@keyframes timer-pulse-warn {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+  50% { box-shadow: 0 0 16px 2px rgba(245, 158, 11, 0.35); }
+}
+@keyframes timer-pulse-alert {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+  50% { box-shadow: 0 0 20px 4px rgba(239, 68, 68, 0.55); }
+}
+
+.court-timer-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.court-timer-digits {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  color: #fff;
+  letter-spacing: 1px;
+}
+.court-timer-card.running .court-timer-digits {
+  color: #4ade80;
+  text-shadow: 0 0 12px rgba(74, 222, 128, 0.45);
+}
+.court-timer-card.warning .court-timer-digits {
+  color: #fbbf24;
+  text-shadow: 0 0 12px rgba(251, 191, 36, 0.45);
+}
+.court-timer-card.expired .court-timer-digits {
+  color: #f87171;
+  text-shadow: 0 0 14px rgba(248, 113, 113, 0.55);
+}
+
+.court-timer-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.court-status-badge {
+  font-size: 10.5px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.court-status-badge.live {
+  background: rgba(34,197,94,.22);
+  color: #4ade80;
+  border: 1px solid rgba(34,197,94,.45);
+}
+.court-status-badge.warn {
+  background: rgba(245,158,11,.25);
+  color: #fbbf24;
+  border: 1px solid rgba(245,158,11,.5);
+}
+.court-status-badge.expired {
+  background: rgba(239,68,68,.3);
+  color: #fca5a5;
+  border: 1px solid rgba(239,68,68,.6);
+}
+.court-status-badge.paused {
+  background: rgba(255,255,255,.12);
+  color: rgba(255,255,255,.8);
+  border: 1px solid rgba(255,255,255,.2);
+}
+.court-status-badge.empty {
+  background: rgba(255,255,255,.07);
+  color: var(--muted);
+}
+.court-status-hint {
+  font-size: 10.5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* Progress bar */
+.court-progress-track {
+  width: 100%;
+  height: 5px;
+  background: rgba(255,255,255,.1);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.court-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #22c55e, #4ade80);
+  transition: width .4s linear;
+}
+.court-timer-card.warning .court-progress-fill {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+.court-timer-card.expired .court-progress-fill {
+  background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
+/* Court Players */
+.court-players {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 100px;
+  margin-bottom: 10px;
+}
+.player-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,.06);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  border: 1px solid rgba(255,255,255,.06);
+  transition: all .2s ease;
+}
+.player-row.is-me {
+  background: rgba(34,197,94,.18) !important;
+  border-color: rgba(34,197,94,.5) !important;
+  box-shadow: 0 0 10px rgba(34,197,94,.25);
+}
+.player-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.you-pill {
+  font-size: 9.5px;
+  font-weight: 800;
+  background: var(--accent);
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.5px;
+}
+.player-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+}
+.player-dot.n { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,.6); }
+.player-dot.b { background: #3b82f6; box-shadow: 0 0 6px rgba(59,130,246,.6); }
+
+.type-badge {
+  font-size: 9.5px; font-weight: 800;
+  padding: 1px 6px; border-radius: 999px;
+  letter-spacing: .5px;
+}
+.type-badge.n { background: rgba(245,158,11,.2); color: #fbbf24; border: 1px solid rgba(245,158,11,.4); }
+.type-badge.b { background: rgba(59,130,246,.2); color: #93c5fd; border: 1px solid rgba(59,130,246,.4); }
+
+.player-session-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-light);
+  background: rgba(34,197,94,.12);
+  padding: 2px 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(34,197,94,.25);
+  font-variant-numeric: tabular-nums;
+  margin-left: 2px;
+}
+.player-session-badge.warn {
+  color: #fbbf24;
+  background: rgba(245,158,11,.15);
+  border-color: rgba(245,158,11,.3);
+}
+.player-session-badge.expired {
+  color: #f87171;
+  background: rgba(239,68,68,.18);
+  border-color: rgba(239,68,68,.35);
+}
+
+.empty-court {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 90px;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-style: italic;
+  border: 2px dashed rgba(255,255,255,.12);
+  border-radius: 12px;
+  background: rgba(0,0,0,.1);
+}
+
+.court-footer {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+.court-footer strong { color: #fff; }
+
+/* Queue Alert Banner */
+.queue-alert-box {
+  background: linear-gradient(135deg, rgba(245,158,11,.18), rgba(217,119,6,.1));
+  border: 1.5px solid rgba(245,158,11,.45);
+  border-radius: 14px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13.5px;
+  color: #fef3c7;
+  animation: pulse-warn 2s infinite;
+}
+.queue-alert-icon { font-size: 20px; }
+.queue-alert-box strong { color: #fbbf24; font-weight: 800; }
+
+/* Queue / Paddle Stacking */
+.queue-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.queue-card {
+  background: var(--card);
+  border: 1.5px solid var(--border);
+  border-radius: 18px;
+  padding: 16px 18px;
+}
+.queue-header {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 12px;
+}
+.queue-num {
+  width: 32px; height: 32px; border-radius: 9px;
+  background: linear-gradient(135deg, #22c55e, #15803d);
+  color: #fff;
+  font-size: 15px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+}
+.queue-title { font-size: 15px; font-weight: 800; }
+.queue-count { font-size: 12px; font-weight: 700; color: var(--muted); margin-left: auto; }
+
+.queue-slots { display: flex; flex-direction: column; gap: 6px; }
+.slot-row {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,.05);
+  border-radius: 9px; padding: 8px 10px;
+  font-size: 13px; font-weight: 600;
+  border: 1px solid rgba(255,255,255,.05);
+  transition: all .2s ease;
+}
+.slot-row.is-me {
+  background: rgba(34,197,94,.18) !important;
+  border-color: rgba(34,197,94,.5) !important;
+  box-shadow: 0 0 10px rgba(34,197,94,.25);
+}
+
+.no-session {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; min-height: 50vh;
+  font-size: 18px; color: var(--muted); gap: 14px;
+}
+.no-session .emoji { font-size: 64px; }
+
+/* Last updated */
+#lastUpdated {
+  text-align: center;
+  font-size: 11px; color: var(--muted);
+  margin-top: 28px;
+}
+
+/* ============================================================
+   RESPONSIVE DESIGN (MOBILE PHONES & TABLETS)
+   ============================================================ */
+@media (max-width: 900px) {
+  .courts-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .mobile-view-tabs {
+    display: flex;
+  }
+  .view-hidden {
+    display: none !important;
+  }
+}
+
+@media (max-width: 600px) {
+  body {
+    padding: 14px 14px 32px;
+  }
+  .header {
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+  }
+  .brand-logo {
+    width: 42px; height: 42px; border-radius: 11px;
+  }
+  .brand h1 { font-size: 18px; }
+  .brand p { font-size: 9px; letter-spacing: 2px; }
+  #clock { font-size: 13px; padding: 4px 10px; }
+  .live-badge { font-size: 11px; padding: 4px 10px; }
+  .player-notifier-card {
+    padding: 14px;
+    border-radius: 16px;
+  }
+  .pnc-select-row {
+    width: 100%;
+  }
+  .court-timer-digits {
+    font-size: 26px;
+  }
+  .queue-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="brand">
+    <div class="brand-logo">
+      <img src="North yard.png" alt="North Yard Logo" onerror="this.onerror=null;this.parentNode.innerHTML='🏓';" />
+    </div>
+    <div>
+      <h1>NORTH YARD</h1>
+      <p>OPEN PLAY · LIVE DISPLAY</p>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="live-badge"><div class="live-dot"></div> LIVE DISPLAY</div>
+    <div id="clock">—</div>
+  </div>
+</div>
+
+<!-- Player Notification & Identity Picker Card -->
+<div class="player-notifier-card" id="playerNotifierCard">
+  <div class="pnc-header">
+    <div class="pnc-title">
+      <div class="pnc-icon">📱</div>
+      <span>Playing today? Get notified when you're up!</span>
+    </div>
+  </div>
+  <div class="pnc-desc">
+    Select your name below. We will send an audio chime &amp; browser notification to your phone when your court is ready or when you're next up in queue — even if you switch apps!
+  </div>
+
+  <!-- Unselected state: Searchable mobile name selector -->
+  <div id="pncPickerRow" class="pnc-select-row">
+    <div class="pnc-search-container" id="pncSearchContainer">
+      <div class="pnc-search-input-wrap">
+        <span class="pnc-search-lens">🔍</span>
+        <input
+          type="text"
+          id="pncSearchInput"
+          class="pnc-search-input"
+          placeholder="Tap to search your name..."
+          autocomplete="off"
+          autocorrect="off"
+          autocapitalize="none"
+          spellcheck="false"
+          aria-label="Search your player name"
+        />
+        <button
+          type="button"
+          id="pncSearchClear"
+          class="pnc-search-clear-btn"
+          style="display:none;"
+          onclick="pncClearSearch()"
+          aria-label="Clear search"
+        >×</button>
+      </div>
+      <div id="pncSearchResults" class="pnc-search-dropdown" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- Selected active state -->
+  <div id="pncActiveBox" class="pnc-active-box" style="display:none;">
+    <div class="pnc-user-info">
+      <span style="font-size:22px;flex-shrink:0;">🔔</span>
+      <div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.6);text-transform:uppercase;font-weight:700;">Watching notifications for:</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px;">
+          <div class="pnc-user-name" id="pncCurrentName">—</div>
+          <div id="pncCurrentLoc" class="pnc-loc-pill">Waiting</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
+          <span id="pncCurrentGames" style="font-size:12px;font-weight:700;color:#93c5fd;background:rgba(59,130,246,0.18);padding:3px 8px;border-radius:6px;border:1px solid rgba(59,130,246,0.35);">🎮 0 games played</span>
+          <span id="pncCurrentTime" style="font-size:12px;font-weight:700;color:#86efac;background:rgba(34,197,94,0.18);padding:3px 8px;border-radius:6px;border:1px solid rgba(34,197,94,0.35);">⏱️ 4h 00m left</span>
+        </div>
+      </div>
+    </div>
+    <div class="pnc-actions">
+      <button class="btn-pnc-action" onclick="testNotificationAlert()" title="Test chime and notification">🔔 Test Ping</button>
+      <button class="btn-pnc-action" onclick="clearMyPlayerSelection()" title="Change selected name">🔄 Change</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile Quick-Filter Tabs -->
+<div class="mobile-view-tabs" id="mobileTabs">
+  <button class="m-tab-btn active" onclick="switchMobileView('all')">👁️ All</button>
+  <button class="m-tab-btn" onclick="switchMobileView('courts')">🏟️ Courts (3)</button>
+  <button class="m-tab-btn" onclick="switchMobileView('queue')">🎯 Queue</button>
+</div>
+
+<!-- Main Display Content -->
+<div id="displayContent">
+  <div class="no-session"><div class="emoji">🏟️</div><div>Waiting for active Open Play session...</div></div>
+</div>
+
+<div id="lastUpdated">Last updated: —</div>
+
+<script src="api-sync.js"></script>
+<script>
+const MATCH_DURATION = 900; // 15 mins
+const SESSION_DURATION = 14400; // 4 hours
+
+let displayData = null;
+let displayReceivedAt = 0;
+let currentMobileView = 'all';
+
+// Stored Player Identity (Supports URL param ?player=ID or localStorage)
+let myPlayerId = null;
+try {
+  const urlParams = new URLSearchParams(window.location.search);
+  const qPlayer = urlParams.get('player');
+  if (qPlayer) {
+    myPlayerId = qPlayer;
+    localStorage.setItem('my_openplay_player_id', qPlayer);
+  } else {
+    myPlayerId = localStorage.getItem('my_openplay_player_id');
+  }
+} catch(e) {}
+let lastNotifiedCourt = null;
+let lastNotifiedQueueRem = null;
+let notifiedSession15m = false;
+
+// Register Service Worker for mobile notification support
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(err => {
+    console.log('SW registration error (normal in non-HTTPS/local):', err);
+  });
+}
+
+// Synthesize pleasant two-tone stadium ding (100% offline, zero external files)
+function playDing() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(587.33, now); // D5
+    osc.frequency.setValueAtTime(880.00, now + 0.12); // A5
+
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(0.35, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + 0.65);
+  } catch(e) {
+    console.error('Audio chime error:', e);
+  }
+}
+
+// Send browser notification + audio chime + vibration
+function sendMobileNotification(title, body) {
+  // 1. Audio chime
+  playDing();
+
+  // 2. Vibration
+  if ('vibrate' in navigator) {
+    try { navigator.vibrate([250, 100, 250]); } catch(e) {}
+  }
+
+  // 3. Native Browser Notification
+  if ('Notification' in window && Notification.permission === 'granted') {
+    const options = {
+      body,
+      icon: 'North yard.png',
+      badge: 'North yard.png',
+      tag: 'northyard-alert-' + Date.now(),
+      vibrate: [250, 100, 250],
+      renotify: true
+    };
+
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then(reg => {
+        reg.showNotification(title, options);
+      }).catch(() => {
+        new Notification(title, options);
+      });
+    } else {
+      new Notification(title, options);
+    }
+  }
+}
+
+// Request Notification Permission on user click
+async function requestNotificationPermission() {
+  if (!('Notification' in window)) {
+    alert('This browser does not support web notifications, but audio alerts will still play!');
+    return false;
+  }
+  if (Notification.permission === 'granted') return true;
+  if (Notification.permission !== 'denied') {
+    const permission = await Notification.requestPermission();
+    return permission === 'granted';
+  }
+  alert('Notifications are currently blocked in your browser settings. Please allow notifications for this site to receive alerts.');
+  return false;
+}
+
+function escapeHtml(str) {
+  return String(str || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+let pncDropdownOpen = false;
+let pncSearchQuery = '';
+let pncLastPlayerSignature = '';
+
+function pncGetPlayerSignature(players) {
+  if (!players) return '';
+  return players.map(p => p.id + ':' + p.name + ':' + (p.courtNumber || '')).join('|');
+}
+
+function pncFilterPlayers(query) {
+  if (!displayData || !displayData.players) return [];
+  const q = (query || '').trim().toLowerCase();
+  const sorted = [...displayData.players].sort((a,b) => String(a.name).localeCompare(String(b.name)));
+  if (!q) return sorted;
+  return sorted.filter(p => p.name.toLowerCase().includes(q));
+}
+
+function renderPncDropdown(query) {
+  const listEl = document.getElementById('pncSearchResults');
+  if (!listEl) return;
+  const matches = pncFilterPlayers(query);
+  if (!matches.length) {
+    listEl.innerHTML = `<div class="pnc-dropdown-empty">No players found matching "${escapeHtml(query)}"</div>`;
+    listEl.style.display = 'block';
+    pncDropdownOpen = true;
+    return;
+  }
+
+  listEl.innerHTML = matches.map(p => {
+    let loc = 'Waiting in lobby';
+    if (p.courtNumber) loc = 'Playing Court ' + p.courtNumber;
+    else if (displayData.queue) {
+      const qItem = displayData.queue.find(x => String(x.player_id) === String(p.id));
+      if (qItem) loc = `Queue ${qItem.queue_number} (Pos #${qItem.position_in_queue})`;
+    }
+    const pt = timerFor(displayData, p.id);
+    const games = p.gamesPlayed || 0;
+    return `
+      <div class="pnc-player-item" onclick="selectMyPlayer(${p.id})">
+        <div class="pnc-player-left">
+          ${typeBadge(p.playerType)}
+          <div>
+            <div class="pnc-player-name">${escapeHtml(p.name)}</div>
+            <div class="pnc-player-sub">${escapeHtml(loc)}</div>
+          </div>
+        </div>
+        <div class="pnc-player-right">
+          <span class="pnc-player-badge">🎮 ${games}</span>
+          <span class="pnc-player-time">⏱️ ${formatSessionTime(pt.remaining)}</span>
+          <span class="pnc-player-arrow">👉</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+  listEl.style.display = 'block';
+  pncDropdownOpen = true;
+}
+
+function pncClearSearch() {
+  const input = document.getElementById('pncSearchInput');
+  const clearBtn = document.getElementById('pncSearchClear');
+  if (input) {
+    input.value = '';
+    input.focus();
+  }
+  if (clearBtn) clearBtn.style.display = 'none';
+  pncSearchQuery = '';
+  renderPncDropdown('');
+}
+
+function pncCloseDropdown() {
+  const listEl = document.getElementById('pncSearchResults');
+  if (listEl) listEl.style.display = 'none';
+  pncDropdownOpen = false;
+}
+
+async function selectMyPlayer(pid) {
+  myPlayerId = String(pid);
+  try { localStorage.setItem('my_openplay_player_id', String(pid)); } catch(e) {}
+  pncCloseDropdown();
+  await requestNotificationPermission();
+  updatePlayerNotifierUI();
+  if (displayData) render(displayData);
+
+  const pName = getPlayerNameById(pid);
+  sendMobileNotification('🔔 Notifications Active!', `You're all set, ${pName}! We'll alert you with sound & notifications when you're up next.`);
+}
+
+function clearMyPlayerSelection() {
+  myPlayerId = null;
+  try { localStorage.removeItem('my_openplay_player_id'); } catch(e) {}
+  lastNotifiedCourt = null;
+  lastNotifiedQueueRem = null;
+  notifiedSession15m = false;
+  updatePlayerNotifierUI();
+  if (displayData) render(displayData);
+  pncClearSearch();
+}
+
+function testNotificationAlert() {
+  sendMobileNotification('🏓 North Yard Test Alert', 'Notifications and sound are working great on your device!');
+}
+
+function getPlayerNameById(id) {
+  if (!displayData || !displayData.players) return 'Player';
+  const p = displayData.players.find(x => String(x.id) === String(id));
+  return p ? p.name : 'Player';
+}
+
+function updatePlayerNotifierUI() {
+  const pickerRow = document.getElementById('pncPickerRow');
+  const activeBox = document.getElementById('pncActiveBox');
+  const currentName = document.getElementById('pncCurrentName');
+  const currentLoc = document.getElementById('pncCurrentLoc');
+  const currentGames = document.getElementById('pncCurrentGames');
+  const currentTime = document.getElementById('pncCurrentTime');
+  const input = document.getElementById('pncSearchInput');
+
+  if (myPlayerId) {
+    if (pickerRow) pickerRow.style.display = 'none';
+    if (activeBox) activeBox.style.display = 'flex';
+    if (currentName) currentName.textContent = getPlayerNameById(myPlayerId);
+
+    if (displayData) {
+      const p = (displayData.players || []).find(x => String(x.id) === String(myPlayerId));
+      const pt = timerFor(displayData, myPlayerId);
+      const games = p ? (p.gamesPlayed || 0) : 0;
+
+      if (currentGames) currentGames.textContent = `🎮 ${games} ${games === 1 ? 'game' : 'games'} played`;
+      if (currentTime) currentTime.textContent = `⏱️ ${formatSessionTime(pt.remaining)} left`;
+
+      // Find current location
+      if (currentLoc) {
+        if (p && p.courtNumber) {
+          currentLoc.textContent = '🏟️ Playing on Court ' + p.courtNumber;
+          currentLoc.className = 'pnc-loc-pill court';
+        } else {
+          const qItem = (displayData.queue || []).find(x => String(x.player_id) === String(myPlayerId));
+          if (qItem) {
+            currentLoc.textContent = `🎯 Queue ${qItem.queue_number} (Pos #${qItem.position_in_queue})`;
+            currentLoc.className = qItem.queue_number === 1 ? 'pnc-loc-pill warn' : 'pnc-loc-pill';
+          } else {
+            currentLoc.textContent = 'Waiting in lobby';
+            currentLoc.className = 'pnc-loc-pill';
+          }
+        }
+      }
+    }
+  } else {
+    if (pickerRow) pickerRow.style.display = 'flex';
+    if (activeBox) activeBox.style.display = 'none';
+
+    // Only update dropdown when open and user is NOT typing
+    if (pncDropdownOpen && input && document.activeElement !== input) {
+      const sig = pncGetPlayerSignature(displayData?.players);
+      if (sig !== pncLastPlayerSignature) {
+        pncLastPlayerSignature = sig;
+        renderPncDropdown(pncSearchQuery);
+      }
+    }
+  }
+}
+
+// Bind search input interactions on load
+document.addEventListener('DOMContentLoaded', () => {
+  const searchInput = document.getElementById('pncSearchInput');
+  const clearBtn = document.getElementById('pncSearchClear');
+
+  if (searchInput) {
+    searchInput.addEventListener('focus', () => {
+      renderPncDropdown(searchInput.value);
+    });
+
+    searchInput.addEventListener('input', (e) => {
+      pncSearchQuery = e.target.value;
+      if (clearBtn) clearBtn.style.display = pncSearchQuery ? 'block' : 'none';
+      renderPncDropdown(pncSearchQuery);
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    const container = document.getElementById('pncSearchContainer');
+    if (container && !container.contains(e.target)) {
+      pncCloseDropdown();
+    }
+  });
+});
+
+// Mobile view tabs
+function switchMobileView(view) {
+  currentMobileView = view;
+  document.querySelectorAll('.m-tab-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.textContent.toLowerCase().includes(view === 'all' ? 'all' : (view === 'courts' ? 'courts' : 'queue')));
+  });
+  const courtsSec = document.getElementById('secCourts');
+  const queueSec = document.getElementById('secQueue');
+  if (courtsSec && queueSec) {
+    if (view === 'all') {
+      courtsSec.classList.remove('view-hidden');
+      queueSec.classList.remove('view-hidden');
+    } else if (view === 'courts') {
+      courtsSec.classList.remove('view-hidden');
+      queueSec.classList.add('view-hidden');
+    } else if (view === 'queue') {
+      courtsSec.classList.add('view-hidden');
+      queueSec.classList.remove('view-hidden');
+    }
+  }
+}
+
+// Clock ticker
+function updateClock() {
+  const d = new Date();
+  const t = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+  const el = document.getElementById('clock');
+  if (el) el.textContent = t;
+}
+updateClock();
+setInterval(updateClock, 1000);
+
+// Fetch data from API
+async function fetchData() {
+  try {
+    const r = await fetch('api/open_play.php?action=get_display_data');
+    const data = await r.json();
+    displayData = data;
+    displayReceivedAt = Date.now();
+    updatePlayerNotifierUI();
+    render(data);
+    checkPlayerNotifications(data);
+    const lu = document.getElementById('lastUpdated');
+    if (lu) lu.textContent = 'Last refreshed: ' + new Date().toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:true });
+  } catch(e) {
+    console.error('Display fetch error:', e);
+  }
+}
+
+function typeBadge(t) {
+  if (t === 'Newbie' || t === 'Novice') return '<span class="type-badge n" title="Novice">N</span>';
+  return '<span class="type-badge b" title="Beginner">B</span>';
+}
+function typeDot(t) {
+  return '<div class="player-dot ' + (t === 'Newbie' || t === 'Novice' ? 'n' : 'b') + '"></div>';
+}
+
+function formatRoundTime(seconds) {
+  seconds = Math.max(0, Math.floor(seconds));
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+function formatSessionTime(seconds) {
+  seconds = Math.max(0, Math.floor(seconds));
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) {
+    return h + 'h ' + String(m).padStart(2, '0') + 'm';
+  }
+  return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+}
+
+function timerFor(data, id) {
+  const timer = (data.timerState || []).find(t => String(t.player_id) === String(id));
+  if (!timer) return { remaining: SESSION_DURATION, roundRemaining: MATCH_DURATION, running: true, roundRunning: false };
+  const elapsed = Math.max(0, Math.floor((Date.now() - displayReceivedAt) / 1000));
+  const roundRemaining = timer.roundRunning
+    ? Math.max(0, timer.roundRemaining - elapsed)
+    : timer.roundRemaining;
+  const spent = timer.running ? elapsed : 0;
+  const remaining = Math.max(0, timer.remaining - spent);
+  return {
+    remaining,
+    roundRemaining,
+    running: timer.running && remaining > 0,
+    roundRunning: timer.roundRunning && roundRemaining > 0 && remaining > 0
+  };
+}
+
+// Automatic triggers for the selected mobile player
+function checkPlayerNotifications(data) {
+  if (!myPlayerId || !data) return;
+  const pName = getPlayerNameById(myPlayerId);
+
+  // 1. Check if assigned to court
+  const assignedCourt = (data.courts || []).find(c => (c.players || []).some(p => String(p.id) === String(myPlayerId)));
+  if (assignedCourt) {
+    const cNum = assignedCourt.courtNumber;
+    if (lastNotifiedCourt !== cNum) {
+      lastNotifiedCourt = cNum;
+      sendMobileNotification(`🏟️ Court ${cNum} Ready For You!`, `Hey ${pName}, you are called up to Court ${cNum}! Head over to the court now.`);
+    }
+  } else {
+    lastNotifiedCourt = null;
+  }
+
+  // 2. Check if in Queue 1 and a court is ending soon
+  const myQueueItem = (data.queue || []).find(q => String(q.player_id) === String(myPlayerId));
+  if (myQueueItem && myQueueItem.queue_number === 1) {
+    (data.courts || []).forEach(c => {
+      const pTimers = (c.players || []).map(p => timerFor(data, p.id));
+      const isRunning = pTimers.some(t => t.roundRunning);
+      if (isRunning && c.players.length > 0) {
+        const rem = Math.min(...pTimers.map(t => t.roundRemaining));
+        if (rem <= 120 && rem > 0 && lastNotifiedQueueRem !== c.courtNumber) {
+          lastNotifiedQueueRem = c.courtNumber;
+          sendMobileNotification(`⏰ You're Up Next! (Queue 1)`, `Court ${c.courtNumber} match is ending in ${formatRoundTime(rem)}! Get your paddles ready.`);
+        }
+      }
+    });
+  }
+
+  // 3. Check 4-hour session remaining
+  const pt = timerFor(data, myPlayerId);
+  if (pt.remaining <= 900 && pt.remaining > 0 && !notifiedSession15m) {
+    notifiedSession15m = true;
+    sendMobileNotification('⏱️ 15 Mins Left in Session', `Hey ${pName}, you have 15 minutes left in your 4-hour session today.`);
+  }
+}
+
+function render(data) {
+  const container = document.getElementById('displayContent');
+  if (!container) return;
+
+  if (!data || !data.ok || !data.session) {
+    container.innerHTML = '<div class="no-session"><div class="emoji">🏟️</div><div>No active Open Play session. Waiting for registration...</div></div>';
+    return;
+  }
+
+  // Courts
+  const courts = data.courts || [];
+  let alertMessages = [];
+
+  const courtsHtml = courts.map(c => {
+    const num = parseInt(c.courtNumber);
+    const isNewbie = num === 1;
+    const courtClass = isNewbie ? 'newbie' : 'beginner';
+    const typeLabel = isNewbie ? 'Novices Only' : 'Beginners';
+    const players = c.players || [];
+
+    // Calculate match countdown based on court players
+    const pTimers = players.map(p => timerFor(data, p.id));
+    const isRunning = players.length > 0 && pTimers.some(t => t.roundRunning);
+    const courtRoundRem = players.length > 0
+      ? Math.min(...pTimers.map(t => t.roundRemaining))
+      : MATCH_DURATION;
+    const isExpired = players.length > 0 && courtRoundRem <= 0;
+    const isWarning = isRunning && courtRoundRem <= 120 && courtRoundRem > 0;
+
+    // Timer card class & status badge
+    let timerCardClass = '';
+    let statusBadge = '';
+    let statusHint = '15-Minute Round Timer';
+
+    if (players.length === 0) {
+      statusBadge = '<span class="court-status-badge empty">Court Open</span>';
+      statusHint = 'Waiting for players';
+    } else if (isExpired) {
+      timerCardClass = 'expired';
+      statusBadge = '<span class="court-status-badge expired">🔔 Time Expired</span>';
+      statusHint = 'Match complete · Rotate queue';
+      alertMessages.push(`<strong>Court ${num}</strong> match has ended! Queue next players.`);
+    } else if (isRunning) {
+      if (isWarning) {
+        timerCardClass = 'warning';
+        statusBadge = '<span class="court-status-badge warn">⚠️ Ending Soon</span>';
+        statusHint = `${courtRoundRem}s remaining`;
+        alertMessages.push(`<strong>Court ${num}</strong> timer is running out (${formatRoundTime(courtRoundRem)} left) — Next Queue get ready!`);
+      } else {
+        timerCardClass = 'running';
+        statusBadge = '<span class="court-status-badge live">● Live Match</span>';
+        statusHint = `${Math.ceil(courtRoundRem / 60)} min(s) remaining`;
+      }
+    } else {
+      statusBadge = '<span class="court-status-badge paused">⏸ Ready / Paused</span>';
+      statusHint = 'Timer paused';
+    }
+
+    const progressPct = Math.min(100, Math.max(0, (courtRoundRem / MATCH_DURATION) * 100));
+
+    // Player Rows
+    const playersHtml = players.length
+      ? players.map(p => {
+          const pt = timerFor(data, p.id);
+          const sessClass = pt.remaining <= 0 ? 'expired' : (pt.remaining <= 1800 ? 'warn' : '');
+          const isMe = String(p.id) === String(myPlayerId);
+          return `
+            <div class="player-row ${isMe ? 'is-me' : ''}">
+              ${typeDot(p.playerType)}
+              <span class="player-name">
+                ${p.name}
+                ${isMe ? '<span class="you-pill">YOU</span>' : ''}
+              </span>
+              ${typeBadge(p.playerType)}
+              <span class="player-games-badge" style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:6px;margin-left:auto;margin-right:6px;" title="${p.gamesPlayed || 0} games played">
+                🎮 ${p.gamesPlayed || 0}
+              </span>
+              <span class="player-session-badge ${sessClass}" title="Total 4-hour session time remaining">
+                ⏱️ ${formatSessionTime(pt.remaining)}
+              </span>
+            </div>`;
+        }).join('')
+      : '<div class="empty-court">No players currently on Court ' + num + '</div>';
+
+    return `
+      <div class="court-card ${courtClass}">
+        <div class="court-header">
+          <div class="court-header-left">
+            <div class="court-icon ${courtClass}">🏟️</div>
+            <div>
+              <div class="court-name">Court ${num}</div>
+              <div class="court-sub">${typeLabel}</div>
+            </div>
+          </div>
+          <span class="court-type-pill ${courtClass}">${isNewbie ? '🟠 Novice' : '🔵 Beginner'}</span>
+        </div>
+
+        <div class="court-timer-card ${timerCardClass}">
+          <div class="court-timer-top">
+            <div class="court-timer-digits">${formatRoundTime(courtRoundRem)}</div>
+            <div class="court-timer-meta">
+              ${statusBadge}
+              <div class="court-status-hint">${statusHint}</div>
+            </div>
+          </div>
+          <div class="court-progress-track">
+            <div class="court-progress-fill" style="width: ${progressPct}%;"></div>
+          </div>
+        </div>
+
+        <div class="court-players">${playersHtml}</div>
+
+        <div class="court-footer">
+          <span>Occupancy: <strong>${players.length}/4</strong> players</span>
+          <span>${isRunning ? 'Match in progress' : (isExpired ? 'Rotation due' : 'Ready')}</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Queue (strictly limited to maximum 4 players per queue)
+  const queue = data.queue || [];
+  const queueMap = {};
+  const seenQ = new Set();
+  queue.forEach(item => {
+    const pid = String(item.player_id || item.playerName);
+    if (seenQ.has(pid)) return;
+    const qn = parseInt(item.queue_number);
+    if (!queueMap[qn]) queueMap[qn] = [];
+    if (queueMap[qn].length >= 4) return;
+    seenQ.add(pid);
+    queueMap[qn].push(item);
+  });
+  const queueNums = Object.keys(queueMap).sort((a, b) => parseInt(a) - parseInt(b));
+
+  const queueHtml = queueNums.length
+    ? queueNums.map(qn => {
+        const slots = queueMap[qn];
+        const slotsHtml = slots.map(s => {
+          const pt = timerFor(data, s.player_id);
+          const sessClass = pt.remaining <= 0 ? 'expired' : (pt.remaining <= 1800 ? 'warn' : '');
+          const isMe = String(s.player_id) === String(myPlayerId);
+          return `
+            <div class="slot-row ${isMe ? 'is-me' : ''}">
+              ${typeDot(s.playerType)}
+              <span class="player-name">
+                ${s.playerName}
+                ${isMe ? '<span class="you-pill">YOU</span>' : ''}
+              </span>
+              ${typeBadge(s.playerType)}
+              <span class="player-games-badge" style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:6px;margin-left:auto;margin-right:6px;" title="${s.gamesPlayed || 0} games played">
+                🎮 ${s.gamesPlayed || 0}
+              </span>
+              <span class="player-session-badge ${sessClass}" title="Total 4-hour session time remaining">
+                ⏱️ ${formatSessionTime(pt.remaining)}
+              </span>
+            </div>`;
+        }).join('');
+
+        return `
+          <div class="queue-card">
+            <div class="queue-header">
+              <div class="queue-num">${qn}</div>
+              <div class="queue-title">Queue ${qn}</div>
+              <span class="queue-count">${slots.length}/4</span>
+            </div>
+            <div class="queue-slots">${slotsHtml}</div>
+          </div>`;
+      }).join('')
+    : '<div style="color:rgba(255,255,255,.45);font-style:italic;padding:16px 0;">No players in queue.</div>';
+
+  let alertBanner = '';
+  if (alertMessages.length > 0) {
+    alertBanner = `
+      <div class="queue-alert-box">
+        <div class="queue-alert-icon">📢</div>
+        <div>${alertMessages[0]}</div>
+      </div>`;
+  }
+
+  container.innerHTML = `
+    <div id="secCourts" class="${currentMobileView === 'queue' ? 'view-hidden' : ''}">
+      <div class="section-title">🏟️ Courts — Live Status & Match Timers</div>
+      <div class="courts-grid">${courtsHtml}</div>
+    </div>
+
+    <div id="secQueue" class="${currentMobileView === 'courts' ? 'view-hidden' : ''}">
+      <div class="section-title">🎯 Paddle Stacking — Queue (Next Up)</div>
+      ${alertBanner}
+      <div class="queue-grid">${queueHtml}</div>
+    </div>
+  `;
+}
+
+// Initial fetch + 4-second poll, 1-second render loop
+fetchData();
+setInterval(fetchData, 4000);
+setInterval(() => {
+  if (displayData) {
+    render(displayData);
+    updatePlayerNotifierUI();
+  }
+}, 1000);
+</script>
+</body>
+</html>
