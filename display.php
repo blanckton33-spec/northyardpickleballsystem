@@ -669,7 +669,7 @@ body {
   border-radius: 6px;
   border: 1px solid rgba(34,197,94,.25);
   font-variant-numeric: tabular-nums;
-  margin-left: 2px;
+  margin-left: auto;
 }
 .player-session-badge.warn {
   color: #fbbf24;
@@ -898,8 +898,7 @@ body {
           <div id="pncCurrentLoc" class="pnc-loc-pill">Waiting</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
-          <span id="pncCurrentGames" style="font-size:12px;font-weight:700;color:#93c5fd;background:rgba(59,130,246,0.18);padding:3px 8px;border-radius:6px;border:1px solid rgba(59,130,246,0.35);">🎮 0 games played</span>
-          <span id="pncCurrentTime" style="font-size:12px;font-weight:700;color:#86efac;background:rgba(34,197,94,0.18);padding:3px 8px;border-radius:6px;border:1px solid rgba(34,197,94,0.35);">⏱️ 4h 00m left</span>
+          <span id="pncCurrentTime" style="font-size:12px;font-weight:700;color:#86efac;background:rgba(34,197,94,0.18);padding:3px 8px;border-radius:6px;border:1px solid rgba(34,197,94,0.35);">♾️ Unlimited Play</span>
         </div>
       </div>
     </div>
@@ -1073,7 +1072,6 @@ function renderPncDropdown(query) {
       if (qItem) loc = `Queue ${qItem.queue_number} (Pos #${qItem.position_in_queue})`;
     }
     const pt = timerFor(displayData, p.id);
-    const games = p.gamesPlayed || 0;
     return `
       <div class="pnc-player-item" onclick="selectMyPlayer(${p.id})">
         <div class="pnc-player-left">
@@ -1084,7 +1082,6 @@ function renderPncDropdown(query) {
           </div>
         </div>
         <div class="pnc-player-right">
-          <span class="pnc-player-badge">🎮 ${games}</span>
           <span class="pnc-player-time">⏱️ ${formatSessionTime(pt.remaining)}</span>
           <span class="pnc-player-arrow">👉</span>
         </div>
@@ -1151,7 +1148,6 @@ function updatePlayerNotifierUI() {
   const activeBox = document.getElementById('pncActiveBox');
   const currentName = document.getElementById('pncCurrentName');
   const currentLoc = document.getElementById('pncCurrentLoc');
-  const currentGames = document.getElementById('pncCurrentGames');
   const currentTime = document.getElementById('pncCurrentTime');
   const input = document.getElementById('pncSearchInput');
 
@@ -1161,11 +1157,6 @@ function updatePlayerNotifierUI() {
     if (currentName) currentName.textContent = getPlayerNameById(myPlayerId);
 
     if (displayData) {
-      const p = (displayData.players || []).find(x => String(x.id) === String(myPlayerId));
-      const pt = timerFor(displayData, myPlayerId);
-      const games = p ? (p.gamesPlayed || 0) : 0;
-
-      if (currentGames) currentGames.textContent = `🎮 ${games} ${games === 1 ? 'game' : 'games'} played`;
       if (currentTime) currentTime.textContent = `♾️ Unlimited Play`;
 
       // Find current location
@@ -1417,9 +1408,6 @@ function render(data) {
                 ${isMe ? '<span class="you-pill">YOU</span>' : ''}
               </span>
               ${typeBadge(p.playerType)}
-              <span class="player-games-badge" style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:6px;margin-left:auto;margin-right:6px;" title="${p.gamesPlayed || 0} games played">
-                🎮 ${p.gamesPlayed || 0}
-              </span>
               <span class="player-session-badge" style="background:rgba(34,197,94,0.14);color:#4ade80;border:1px solid rgba(34,197,94,0.28);" title="Unlimited Open Play (Soft Opening)">
                 ♾️ Unli
               </span>
@@ -1492,9 +1480,6 @@ function render(data) {
                 ${isMe ? '<span class="you-pill">YOU</span>' : ''}
               </span>
               ${typeBadge(s.playerType)}
-              <span class="player-games-badge" style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.7);background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:6px;margin-left:auto;margin-right:6px;" title="${s.gamesPlayed || 0} games played">
-                🎮 ${s.gamesPlayed || 0}
-              </span>
               <span class="player-session-badge" style="background:rgba(34,197,94,0.14);color:#4ade80;border:1px solid rgba(34,197,94,0.28);" title="Unlimited Open Play (Soft Opening)">
                 ♾️ Unli
               </span>
